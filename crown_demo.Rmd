@@ -1,0 +1,350 @@
+---
+title: "crown demo"
+author: "Brian Richardson"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output:
+  html_document:
+    code_folding: hide
+---
+
+### Set up
+
+```{r}
+
+rm(list = ls())
+
+## load packages
+library(dplyr)
+library(tidyr)
+library(devtools)
+load_all()
+
+```
+
+### Generate Data
+
+Set parameters
+
+```{r}
+
+## number of clusters
+m <- 20
+
+## trial sample size
+n_trial <- 5000
+
+## auxiliary sample size
+n_aux <- 5000
+
+## response rate
+p_resp <- 0.5
+
+## censoring probability among responders
+p_cens <- 0.3
+
+## probability of treatment assignment
+pA <- 0.5
+
+## indicator for correctly specified outcome and censoring models
+mu_correct <- T
+pi_correct <- T
+
+## seed for random number generation
+seed <- 1
+
+## find intercept for R model
+R_int <- uniroot(
+  function(xx) {
+    mean(c(plogis(xx),
+         plogis(xx - 2),
+         plogis(xx),
+         plogis(xx))) -
+      p_resp
+  },
+  interval = c(-20, 20)
+)$root
+
+## find intercept for C model
+grid <- expand.grid(arm = c(0, 1), W1 = c(0, 1))
+pR_W1 <- plogis(R_int + grid$arm - grid$W1)
+pAW1 <- 0.25
+C_int <- uniroot(
+  function(xx) {
+    
+    ## P(C = 1 | A, W1)
+    pC_AW1 <- plogis(xx - 0.25 * grid$arm + 0.25 * grid$W1)
+    
+    ## P(C = 1 | R = 1)
+    num <- sum(pC_AW1 * pR_W1 * pAW1)
+    den <- sum(pR_W1 * pAW1)
+    num / den - p_cens
+  },
+  interval = c(-20, 20)
+)$root
+
+## possibly adjust trial and auxiliary sample sizes to be multiples of m
+n_trial <- m * round(n_trial / m)
+n_aux <- m * round(n_aux / m)
+
+## combined sample size
+n_comb <- n_trial + n_aux
+
+```
+
+Generate data
+
+```{r}
+
+## set seed
+set.seed(seed)
+
+## cluster-level covariate generated once from N(0, 1)
+XX1 <- c(0.92, 0.78, 0.07, -1.99, 0.62, -0.06, -0.16, -1.47, -0.48, 0.42,
+         1.36, -0.10, 0.39, -0.05, -1.38, -0.41, -0.39, -0.06, 1.10, 0.76)
+
+## cluster-level randomization
+AA <- sample(rep(c(0, 1), times = m / 2), replace = F)
+
+## simulate trial data
+trial_dat <- data.frame(
+  id = 1:n_trial) %>% 
+  mutate(
+    
+    ## cluster assignment
+    clust = rep(1:m, length = n_trial),
+    
+    ## one cluster-level covariate
+    X1 = XX1[clust],
+    
+    ## arm assigned based on cluster randomization
+    A = AA[clust],
+    
+    ## one binary covariate
+    W1 = rbinom(n_trial, 1, 0.5),
+    
+    ## one normal covariate
+    W2 = rnorm(n_trial, 0, 1),
+    
+    ## response indicator
+    R = rbinom(n_trial, 1, plogis(R_int - 2*A*W1)),
+    
+    ## censoring indicator
+    C = rbinom(n_trial, 1, plogis(C_int - 0.25*A + 0.25*W1)),
+    C = ifelse(R == 1, C, 0),
+    
+    ## potential outcomes
+    #Y0 = rbinom(n_trial, 1, plogis(-0.5 + 0.5*W1 + 0.5*W2 + 0.25*X1)),
+    #Y1 = rbinom(n_trial, 1, plogis(0 - 1*W1 - 0.5*W2)),
+    Y0 = rbinom(n_trial, 1, plogis(-1 + 2*W1 + 0.5*W2 + 0.25*X1)),
+    Y1 = rbinom(n_trial, 1, plogis(0 - 1*W1 - 0.5*W2)),
+    
+    ## outcome
+    Y = (1 - A)*Y0 + A*Y1,
+    Y = ifelse(R == 1 & C == 0, Y, 0),
+    
+    ## survey weight of 1 for trial data
+    wt = 1)
+
+## simulate auxiliary sample
+aux_dat <- data.frame(
+  id = 1:n_aux + n_trial) %>% 
+  mutate(
+    
+    ## cluster assignment
+    clust = rep(1:m, length = n_aux),
+    
+    ## one cluster-level covariate
+    X1 = XX1[clust],
+    
+    ## arm assigned based on cluster randomization
+    A = AA[clust],
+    
+    ## one binary covariate: W1 = 1 over-represented
+    W1 = rbinom(n_aux, 1, 0.75),
+    
+    ## one normal covariate
+    W2 = rnorm(n_aux, 0, 1),
+    
+    ## survey weights to reflect over-representation of W_1
+    wt = ifelse(W1 == 0, 0.75, 0.25),
+    
+    ## missing response, censoring indicator, and outcome
+    R = 0,
+    C = 0,
+    Y = 0)
+    
+## combined data
+dat <- bind_rows(
+  trial_dat %>% select(!c(Y0, Y1)) %>% mutate(S = 1),
+  aux_dat %>% mutate(S = 0))
+
+## potential outcome means
+eta0 <- mean(trial_dat$Y0)
+eta1 <- mean(trial_dat$Y1)
+
+```
+
+check data
+
+```{r}
+
+## check response rate
+print(mean(trial_dat$R)); print(p_resp)
+trial_dat %>% group_by(A) %>% summarise(p_resp = mean(R)) %>% print()
+trial_dat %>% group_by(W1) %>% summarise(p_resp = mean(R)) %>% print()
+trial_dat %>% group_by(A, W1) %>% summarise(p_resp = mean(R)) %>% print()
+
+```
+
+```{r}
+
+## check censoring rate
+trial_dat %>% filter(R == 1) %>% group_by(A, W1) %>%
+  summarise(p_cens = mean(C)) %>% print()
+trial_dat %>% filter(R == 1) %>% 
+  summarise(p_cens = mean(C)) %>% print()
+print(p_cens)
+
+```
+```{r}
+
+## check distribution of W_1
+trial_dat %>% summarise(mean_W1 = mean(W1))
+aux_dat %>% summarise(mean_W1 = weighted.mean(x = W1, w = wt))
+
+```
+
+
+```{r}
+
+## check mean potential outcomes in population
+print(eta0); print(eta1); print(eta1 - eta0)
+trial_dat %>% group_by(W1) %>% summarise(
+  eta0 = mean(Y0), eta1 = mean(Y1)) %>% 
+  mutate(rd = eta1 - eta0) %>% 
+  print()
+
+## check mean potential outcomes among responders
+print(c(eta0, eta1))
+trial_dat %>% filter(R == 1) %>% summarise(m0 = mean(Y0), m1 = mean(Y1))
+
+```
+
+### Analysis
+
+parameters for analysis
+
+```{r}
+
+## outcome regression formula
+if (mu_correct == T) {
+  mu_fmla <- Y ~ A * (X1 + W1 + W2)
+} else {
+  mu_fmla <- Y ~ A * (X1 + W2)
+}
+
+## propensity model formula
+if (pi_correct == T) {
+  pi_fmla <- Q ~ X1 + W1 + W2
+  C_fmla <- C ~ X1 + W1 + W2
+} else {
+  pi_fmla <- Q ~ X1 + W2
+  C_fmla <- C ~ X1 + W2
+}
+
+```
+
+G-formula
+
+```{r}
+
+## naive g-formula
+gfmla_naive <- gfmla_fit_naive(
+  dat = filter(dat, S == 1, R ==1),
+  mu_fmla = mu_fmla)
+
+## proposed g-formula
+gfmla_prop <- gfmla_fit(
+  dat = dat,
+  mu_fmla = mu_fmla)
+
+```
+
+IPW
+
+```{r}
+
+## naive IPW
+ipw_naive <- ipw_fit_naive(
+  dat = filter(dat, S == 1, R == 1),
+  C_fmla = C_fmla)
+
+## proposed IPW
+ipw_prop <- ipw_fit(
+  dat = dat,
+  pi_fmla = pi_fmla)
+
+```
+
+AIPW
+
+```{r}
+
+## naive AIPW
+aipw_naive <- aipw_fit_naive(
+  dat = filter(dat, S == 1, R == 1),
+  mu_fmla = mu_fmla,
+  C_fmla = C_fmla)
+
+## proposed AIPW
+aipw_prop <- aipw_fit(
+  dat = dat,
+  mu_fmla = mu_fmla,
+  pi_fmla = pi_fmla)
+
+
+```
+
+combine results
+
+```{r}
+
+## make data frame with results
+res <- bind_rows(
+  
+  mutate(gfmla_naive$eta_results, name = "gfmla_naive"),
+  mutate(gfmla_prop$eta_results, name = "gfmla_prop"),
+  
+  mutate(ipw_naive$eta_results, name = "ipw_naive"),
+  mutate(ipw_prop$eta_results, name = "ipw_prop"),
+  
+  mutate(aipw_naive$eta_results, name = "aipw_naive"),
+  mutate(aipw_prop$eta_results, name = "aipw_prop")) %>% 
+  
+  separate(
+    name,
+    into = c("est", "version"),
+    sep = "_") %>% 
+  
+  mutate(
+    
+    rdhat = etahat_1 - etahat_0,
+    rrhat = etahat_1 / etahat_0,
+    var_rd = cov_11 + cov_00 - 2*cov_01,
+    var_rr = (cov_11 / (etahat_0^2)) +
+      (cov_00 * (etahat_1^2) / (etahat_0^4)) -
+      cov_01 * 2 * etahat_1 / (etahat_0^3),
+    
+    Estimator = factor(
+      est,
+      levels = c("ipw", "gfmla", "aipw"),
+      labels = c("IPW", "G-Formula", "AIPW")),
+    Version = factor(
+      version,
+      levels = c("naive", "prop"),
+      labels = c("Naive", "Proposed"))) %>% 
+  
+  select(!c(est, version))
+
+```
+

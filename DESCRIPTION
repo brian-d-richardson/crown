@@ -1,0 +1,10 @@
+Package: crown
+Title: crown: cluster RCT outcome with nonresponse
+Version: 0.0.0.9000
+Authors@R: 
+    person("Brian", "Richardson", , "brichsont@ad.unc.edu", role = c("aut", "cre"))
+Description: Causal inference from a cluster RCT with individual-level differential nonresponse.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
