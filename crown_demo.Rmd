@@ -133,8 +133,6 @@ trial_dat <- data.frame(
     C = ifelse(R == 1, C, 0),
     
     ## potential outcomes
-    #Y0 = rbinom(n_trial, 1, plogis(-0.5 + 0.5*W1 + 0.5*W2 + 0.25*X1)),
-    #Y1 = rbinom(n_trial, 1, plogis(0 - 1*W1 - 0.5*W2)),
     Y0 = rbinom(n_trial, 1, plogis(-1 + 2*W1 + 0.5*W2 + 0.25*X1)),
     Y1 = rbinom(n_trial, 1, plogis(0 - 1*W1 - 0.5*W2)),
     

@@ -16,7 +16,6 @@ rm(list = ls())
 ## load packages
 library(dplyr)
 library(tidyr)
-library(xgboost)
 library(ranger)
 library(devtools)
 load_all()

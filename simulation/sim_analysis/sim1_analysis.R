@@ -1,0 +1,290 @@
+###############################################################################
+###############################################################################
+
+# PopART Simulation 1 Analysis
+
+# Brian Richardson
+
+# 2026-04-02
+
+###############################################################################
+###############################################################################
+
+# setup -------------------------------------------------------------------
+
+rm(list = ls())
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(ggh4x)
+library(scales)
+library(legendry)
+library(RColorBrewer)
+
+setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown/simulation")
+
+# load results ------------------------------------------------------------
+
+## load simulation results from each of 10 clusters
+sim.out.list <- lapply(
+  X = 0:9,
+  FUN = function(clust) {
+    cbind(clust,
+          read.csv(paste0("sim_data/sim1/sd",
+                          clust, ".csv")))
+  })
+
+
+## combine simulation results into 1 data frame
+sim.res <- bind_rows(sim.out.list)
+
+# format data -------------------------------------------------------------
+
+## define factor variables
+sim.res <- sim.res %>%
+  mutate(
+    Estimator = factor(Estimator,
+                       levels = c("G-Formula", "IPW", "AIPW")),
+    Pi = factor(case_when(
+      Version == "Naive" ~ "-",
+      pi_correct == F ~ "Incorrect Pi",
+      pi_correct == T ~ "Correct Pi"),
+      levels = c("-", "Incorrect Pi", "Correct Pi")),
+    Mu = factor(case_when(
+      Version == "Naive" ~ "-",
+      mu_correct == F ~ "Incorrect Mu",
+      mu_correct == T ~ "Correct Mu"),
+      levels = c("-", "Incorrect Mu", "Correct Mu")),
+    Trial_Size = factor(n_trial),
+    Aux_Size = factor(n_aux),
+    Size = factor(paste0(n_trial, "_", n_aux)),
+    exp_cons = ifelse(
+      (Estimator == "G-Formula" & Mu == "Correct Mu") |
+        (Estimator == "IPW" & Pi == "Correct Pi") |
+        (Estimator == "AIPW" & (Mu == "Correct Mu" | Pi == "Correct Pi")),
+      1, 0)) %>%
+  filter(!(Version == "Naive" & (mu_correct == F | pi_correct == F)))
+
+## find true eta0, eta1, and effect size
+ggplot(sim.res, aes(x = eta_0)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
+ggplot(sim.res, aes(x = eta_1)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
+eta_0 <- mean(sim.res$eta_0)
+eta_1 <- mean(sim.res$eta_1)
+print(round(c(eta_0, eta_1), 3))
+rd <- eta_1 - eta_0
+rr <- eta_1 / eta_0
+
+## number of simulations
+n.sim <- n_distinct(sim.res$seed)
+
+# check for errors --------------------------------------------------------
+
+na.res <- sim.res %>%
+  group_by(Trial_Size, Aux_Size, Version, Estimator, Mu, Pi) %>%
+  summarise(prop.na = mean(is.na(etahat_0)))
+
+na.res %>%
+  arrange(-prop.na)
+
+
+# facet labels ------------------------------------------------------------
+
+Mu_labels <- c(
+  "Correct Mu"   = '"Correct "*mu[a]',
+  "Incorrect Mu" = '"Incorrect "*mu[a]',
+  "-"            = '"-"')
+
+Pi_labels <- c(
+  "Correct Pi"   = '"Correct "*pi[a]',
+  "Incorrect Pi" = '"Incorrect "*pi[a]',
+  "-"            = '"-"')
+
+# facet shading -----------------------------------------------------------
+
+## shaded rectangles for true nulls
+shaded_rects <- sim.res %>%
+  distinct(Version, Trial_Size, Aux_Size, Estimator, Mu, Pi, exp_cons) %>%
+  filter(exp_cons == 0) %>%
+  mutate(xmin = -Inf, xmax = Inf,
+         ymin = -Inf, ymax = Inf)
+
+
+# color palette -----------------------------------------------------------
+
+pal <- c("#FF6800", "#803E75", "#C10020", "#FFB300")
+
+# plot results ------------------------------------------------------------
+
+## plot RD estimates
+sim.res %>%
+  ggplot(aes(
+    x = interaction(n_aux, n_trial),
+    y = rdhat,
+    color = Estimator,
+    fill = Estimator)) +
+  geom_rect(
+    data = shaded_rects,
+    aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+    inherit.aes = FALSE,
+    fill = "#e5e4e2") +
+  geom_boxplot(alpha = 0.5) +
+  geom_hline(yintercept = rd,
+             linetype = "dashed") +
+  facet_nested(Estimator ~ Version + Pi + Mu,
+               labeller = labeller(
+                 Pi = as_labeller(Pi_labels, label_parsed),
+                 Mu = as_labeller(Mu_labels, label_parsed))) +
+  scale_color_manual(values = pal) +
+  scale_fill_manual(values = pal) +
+  labs(y = expression(hat(RD)),
+       x = "Auxiliary and Trial Sample Sizes") +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        strip.text = element_text(face = "bold"),
+        legend.position = "none") +
+  guides(x = "axis_nested")
+
+
+## save image
+ggsave("sim_figures/sim1/sim1_estimates.png",
+       dpi = 600, width = 8, height = 6)
+
+
+# summarize performance ---------------------------------------------------
+
+summary.table <- sim.res %>%
+  select(seed, Version, Estimator, Mu, Pi, n_trial, n_aux,
+         eta_0, eta_1, rd, rr,
+         etahat_0, etahat_1, rdhat, rrhat,
+         cov_00, cov_01, cov_11, var_rd, var_rr) %>%
+  rename(truth_eta0 = eta_0,
+         truth_eta1 = eta_1,
+         truth_rd = rd,
+         truth_rr = rr,
+         est_eta0 = etahat_0,
+         est_eta1 = etahat_1,
+         est_rd = rdhat,
+         est_rr = rrhat,
+         Var_eta0 = cov_00,
+         Var_eta1 = cov_11,
+         Var_rd = var_rd,
+         Var_rr = var_rr) %>%
+  select(!cov_01) %>%
+  pivot_longer(
+    cols = matches("^(truth|est|Var)_"),
+    names_to = c("type", "param"),
+    names_sep = "_",
+    values_to = "value") %>%
+  pivot_wider(
+    names_from = type,
+    values_from = value,
+    id_cols = c(seed, Version, Estimator, Mu, Pi, n_trial, n_aux, param)) %>%
+  mutate(ci_lower = est - qnorm(0.975) * sqrt(Var),
+         ci_upper = est + qnorm(0.975) * sqrt(Var)) %>%
+  group_by(Version, Estimator, Mu, Pi, n_trial, n_aux, param) %>%
+  summarise(
+    bias = mean(est - truth),
+    emp_var = var(est),
+    est_var = mean(Var),
+    mse = mean((est - truth)^2),
+    ci_cov = mean(truth >= ci_lower & truth <= ci_upper)) %>%
+  mutate(Param = factor(param,
+                        levels = c("eta0", "eta1", "rd", "rr"),
+                        labels = c("eta(0)", "eta(1)", "RD", "RR")))
+
+
+# plot variance results ---------------------------------------------------
+
+summary.table %>%
+  filter(!(Version == "Naive" &
+             (Mu == "Incorrect Mu" | Pi == "Incorrect Pi"))) %>%
+  filter(n_trial == n_aux) %>%
+  ggplot(
+    aes(x = emp_var,
+        y = est_var,
+        color = factor(n_trial),
+        shape = Param)) +
+  geom_rect(
+    data = shaded_rects,
+    aes(xmin = 0, xmax = xmax, ymin = 0, ymax = ymax),
+    inherit.aes = FALSE,
+    fill = "#e5e4e2") +
+  scale_x_continuous(transform = "log10",
+                     breaks = c(0.001, 0.01, 0.1)) +
+  scale_y_continuous(transform = "log10",
+                     breaks = c(0.001, 0.01, 0.1)) +
+  scale_color_manual(
+    values = pal) +
+  scale_shape_discrete(labels = parse_format()) +
+  geom_abline(linetype = "dashed") +
+  geom_point(size = 3) +
+  facet_nested(Estimator ~ Version + Pi + Mu,
+               labeller = labeller(
+                 Pi = as_labeller(Pi_labels, label_parsed),
+                 Mu = as_labeller(Mu_labels, label_parsed))) +
+  labs(y = "Average Estimated Variance",
+       x = "Empirical Variance",
+       color = "Trial and Auxiliary Sample Size",
+       shape = "Parameter") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(face = "bold"),
+        legend.position = "bottom",
+        legend.box = "vertical",
+        legend.spacing.y = unit(-5, "pt"))
+
+## save image
+ggsave("sim_figures/sim1/sim1_variance.png",
+       dpi = 600, width = 8, height = 6)
+
+## table of selected variances
+summary.table %>%
+  filter(Version == "Proposed",
+         Mu == "Correct Mu",
+         Pi == "Correct Pi",
+         param %in% c("eta0", "eta1"))
+
+
+# plot confidence interval coverage ---------------------------------------
+
+summary.table %>%
+  filter(!(Version == "Naive" &
+             (Mu == "Incorrect Mu" | Pi == "Incorrect Pi"))) %>%
+  ggplot(
+    aes(x = interaction(n_aux, n_trial),
+        y = ci_cov,
+        color = Param,
+        shape = Param)) +
+  geom_rect(
+    data = shaded_rects,
+    aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+    inherit.aes = FALSE,
+    fill = "#e5e4e2") +
+  geom_point(size = 3) +
+  geom_hline(yintercept = 0.95,
+             linetype = "dashed") +
+  scale_color_manual(labels = parse_format(),
+                     values = pal) +
+  scale_shape_discrete(labels = parse_format()) +
+  facet_nested(Estimator ~ Version + Pi + Mu,
+               labeller = labeller(
+                 Pi = as_labeller(Pi_labels, label_parsed),
+                 Mu = as_labeller(Mu_labels, label_parsed))) +
+  labs(y = "Empirical CI Coverage",
+       x = "Auxiliary and Trial Sample Sizes",
+       color = "Estimand",
+       shape = "Estimand") +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        strip.text = element_text(face = "bold"),
+        legend.position = "bottom") +
+  guides(x = "axis_nested")
+
+## save image
+ggsave("sim_figures/sim1/sim1_confidence.png",
+       dpi = 600, width = 8, height = 6)
+
+

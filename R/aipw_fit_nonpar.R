@@ -1,57 +1,61 @@
 
 ## naive AIPW estimator
-aipw_fit_naive_nonpar <- function(dat, pA = 0.5) {
+aipw_fit_naive_nonpar <- function(dat, mu_covariates, pi_covariates, pA = 0.5) {
 
   # fit outcome regression --------------------------------------------------
 
-  ## logistic regression among uncensored responders
-  outcome_reg <- glm(
-    formula = mu_fmla,
-    family = "binomial",
-    data = filter(dat, C == 0))
-
+  ## random forest among uncensored responders
+  outcome_reg <- ranger(
+    x = filter(dat, R == 1, C == 0) %>%
+      select(all_of(c("A", mu_covariates))),
+    y = filter(dat, R == 1, C == 0) %>%
+      select(Y) %>% unlist() %>% factor(),
+    probability = T)
+  
   ## data sets with A set to 0, 1
   dat0 <- dat %>% mutate(A = 0, Y = 0)
   dat1 <- dat %>% mutate(A = 1, Y = 0)
-
+  
   ## predict outcomes under A set to 0, 1
   dat$muhat_0 <- NA_real_
-  dat$muhat_0 <- predict(
+  dat$muhat_0[dat$S == 0 | dat$R == 1] <- predict(
     outcome_reg,
-    newdata = dat0,
-    type = "response")
-
+    data = dat0 %>% 
+      select(all_of(c("A", mu_covariates))))$predictions[,2]
+  
   dat$muhat_1 <- NA_real_
-  dat$muhat_1 <- predict(
+  dat$muhat_1[dat$S == 0 | dat$R == 1] <- predict(
     outcome_reg,
-    newdata = dat1,
-    type = "response")
+    data = dat1 %>% 
+      select(all_of(c("A", mu_covariates))))$predictions[,2]
 
 
   # censoring model ---------------------------------------------------------
 
   ## logistic regression
-  censor_reg <- glm(
-    formula = C_fmla,
-    family = "binomial",
-    data = dat)
+  censor_reg <- ranger(
+    x = dat %>%
+      select(all_of(pi_covariates)),
+    y = dat %>%
+      select(C) %>% unlist() %>% factor(),
+    probability = T)
 
   ## predicted values
   dat$piC <- NA_real_
   dat$piC <-
     1 - predict(
       censor_reg,
-      newdata = dat,
-      type = "response")
+      data = dat %>% 
+        select(all_of(pi_covariates)))$predictions[,2]
 
   ## estimated arm * response probabilities in trial data
   dat$piA <- ifelse(dat$A == 1, pA, 1 - pA)
+  
+  ## joint probabilities
+  dat$pihat <- dat$piA * dat$piC
 
 
   # AIPW estimator ----------------------------------------------------------
-
-  ## joint probabilities
-  dat$pihat <- dat$piA * dat$piC
 
   ## Hajek denominator
   n_trial_hat <- dat %>%
@@ -95,73 +99,32 @@ aipw_fit_naive_nonpar <- function(dat, pA = 0.5) {
 
   # variance estimator ------------------------------------------------------
 
-  ## design matrices for variance estimation
-  X0 <- model.matrix(outcome_reg, data = dat0)
-  X1 <- model.matrix(outcome_reg, data = dat1)
-  X_cens <- model.matrix(censor_reg, data = dat)
-
   ## variance estimator
   est_var <- get.sand.est(
-    param = c(etahat$etahat_0, etahat$etahat_1,
-              coef(outcome_reg),
-              coef(censor_reg)),
+    param = c(etahat$etahat_0, etahat$etahat_1),
     n = nrow(dat),
     get.psi = function(xx) {
 
       ## extract pieces of combined parameter
       eh0 <- xx[1]
       eh1 <- xx[2]
-      bb_outcome <- xx[2 + 1:length(coef(outcome_reg))]
-      bb_cens <- xx[2 + length(coef(outcome_reg)) +
-                      1:length(coef(censor_reg))]
-
-      ## re-create predicted outcomes using supplied parameter
-      muhat_0_ <- plogis(as.vector(X0 %*% bb_outcome))
-      muhat_1_ <- plogis(as.vector(X1 %*% bb_outcome))
-
-      ## re-create weights using supplied parameter
-      piC_ <- 1 - plogis(as.vector(X_cens %*% bb_cens))
-      pihat_ <- piC_ * dat$piA
-
-      ## recreate Hajek denominator
-      n_trial_hat_ <- dat %>%
-        mutate(pihat = pihat_) %>%
-        filter(C == 0) %>%
-        mutate(
-          term_0 = (1 - A) / pihat,
-          term_1 = A / pihat) %>%
-        summarise(
-          nhat_0 = sum(term_0),
-          nhat_1 = sum(term_1)) %>%
-        unlist()
 
       ## stacked estimating function
       cbind(
 
-        ## outcome regression estimating function
-        psi.lr(data = dat,
-               beta = bb_outcome,
-               formula = mu_fmla) *
-          (1 - dat$C),
-
-        ## censoring regression estimating function
-        psi.lr(data = dat,
-               beta = bb_cens,
-               formula = C_fmla),
-
         ## etahat estimating function
         case_when(
           dat$C == 0 & dat$A == 0 ~
-            (nrow(dat) / n_trial_hat_[1]) * (dat$Y - muhat_0_) / pihat_,
+            (nrow(dat) / n_trial_hat[1]) * (dat$Y - dat$muhat_0) / dat$pihat,
           .default = 0) +
-          (nrow(dat) / n_aux) * dat$wt * muhat_0_ -
+          (nrow(dat) / n_aux) * dat$wt * dat$muhat_0 -
           eh0,
 
         case_when(
           dat$C == 0 & dat$A == 1 ~
-            (nrow(dat) / n_trial_hat_[2]) * (dat$Y - muhat_1_) / pihat_,
+            (nrow(dat) / n_trial_hat[2]) * (dat$Y - dat$muhat_1) / dat$pihat,
           .default = 0) +
-          (nrow(dat) / n_aux) * dat$wt * muhat_1_ -
+          (nrow(dat) / n_aux) * dat$wt * dat$muhat_1 -
           eh1)
 
     }
@@ -198,14 +161,16 @@ aipw_fit_naive_nonpar <- function(dat, pA = 0.5) {
 
 
 ## proposed AIPW estimator allowing A --> R effect
-aipw_fit <- function(dat) {
+aipw_fit_nonpar <- function(dat, mu_covariates, pi_covariates) {
 
   # fit outcome regression --------------------------------------------------
 
   ## random forest among uncensored responders
   outcome_reg <- ranger(
-    x = filter(dat, S == 1, R == 1, C == 0) %>% select(A, X1, W1, W2, W3),
-    y = filter(dat, S == 1, R == 1, C == 0) %>% select(Y) %>% unlist() %>% factor(),
+    x = filter(dat, S == 1, R == 1, C == 0) %>%
+      select(all_of(c("A", mu_covariates))),
+    y = filter(dat, S == 1, R == 1, C == 0) %>%
+      select(Y) %>% unlist() %>% factor(),
     probability = T)
 
   ## data sets with A set to 0, 1
@@ -217,13 +182,13 @@ aipw_fit <- function(dat) {
   dat$muhat_0[dat$S == 0 | dat$R == 1] <- predict(
     outcome_reg,
     data = dat0 %>% filter(dat$S == 0 | dat$R == 1) %>%
-      select(A, X1, W1, W2, W3))$predictions[,2]
+      select(all_of(c("A", mu_covariates))))$predictions[,2]
 
   dat$muhat_1 <- NA_real_
   dat$muhat_1[dat$S == 0 | dat$R == 1] <- predict(
     outcome_reg,
     data = dat1 %>% filter(dat$S == 0 | dat$R == 1) %>%
-      select(A, X1, W1, W2, W3))$predictions[,2]
+      select(all_of(c("A", mu_covariates))))$predictions[,2]
 
 
   # response model ----------------------------------------------------------
@@ -238,13 +203,13 @@ aipw_fit <- function(dat) {
 
   ## random forest models for Q membership in restricted data
   Q_reg_0 <- ranger(
-    x = rdat0 %>% select(X1, W1, W2, W3),
+    x = rdat0 %>% select(all_of(pi_covariates)),
     y = rdat0 %>% select(Q) %>% unlist() %>% factor(),
     case.weights = rdat0$wt,
     probability = T)
 
   Q_reg_1 <- ranger(
-    x = rdat1 %>% select(X1, W1, W2, W3),
+    x = rdat1 %>% select(all_of(pi_covariates)),
     y = rdat1 %>% select(Q) %>% unlist() %>% factor(),
     case.weights = rdat1$wt,
     probability = T)
@@ -256,13 +221,13 @@ aipw_fit <- function(dat) {
     predict(
       Q_reg_0,
       data = dat %>% filter(Q_ind & A == 0) %>%
-        select(X1, W1, W2, W3))$predictions[,2]
+        select(all_of(pi_covariates)))$predictions[,2]
 
   dat$Q_prob[Q_ind & dat$A == 1] <-
     predict(
       Q_reg_1,
       data = dat %>% filter(Q_ind & A == 1) %>%
-        select(X1, W1, W2, W3))$predictions[,2]
+        select(all_of(pi_covariates)))$predictions[,2]
 
   ## estimated propensity scores in trial data
   dat$pihat <- NA_real_
