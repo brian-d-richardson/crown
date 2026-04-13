@@ -1,17 +1,17 @@
 ###############################################################################
 ###############################################################################
 
-# crown simulation 2: nonparametric nuisance estimation
+# Simulation 3 Development: nonparametric sample splitting
 
 # Brian Richardson
 
-# 2026-04-02
+# 2026-04-09
 
 ###############################################################################
 ###############################################################################
 
 
-sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
+sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
 
   # (for code checking only) ------------------------------------------------
 
@@ -23,7 +23,7 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
     ## load packages
     library(dplyr)
     library(tidyr)
-    library(hal9001)
+    library(ranger)
     library(devtools)
 
     ## set work directory
@@ -60,10 +60,8 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
     ## probability of treatment assignment
     pA <- 0.5
 
-    ## recommended "very fast" setting for HAL
-    smoothness_orders = 0
-    max_degree = 2
-    num_knots = c(25, 10)
+    ## number of folds
+    K <- 5
   }
 
   # simulate data -----------------------------------------------------------
@@ -235,14 +233,8 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
 
   # analyze data ------------------------------------------------------------
 
-  ## naive AIPW
-  aipw_naive <- aipw_fit_naive_nonpar(
-    dat = filter(dat, S == 1, R == 1),
-    mu_covariates = mu_covariates,
-    pi_covariates = pi_covariates)
-
-  ## proposed AIPW
-  aipw_prop <- aipw_fit_nonpar(
+  ## proposed AIPW with nonparametric sample splitting
+  aipw_prop <- aipw_fit_nonpar_ss(
     dat = dat,
     mu_covariates = mu_covariates,
     pi_covariates = pi_covariates)
@@ -252,7 +244,6 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
   ## make data frame with results
   res <- bind_rows(
 
-    mutate(aipw_naive$eta_results, name = "aipw_naive"),
     mutate(aipw_prop$eta_results, name = "aipw_prop")) %>%
 
     separate(

@@ -1,56 +1,65 @@
 
 ## naive AIPW estimator
-aipw_fit_naive_nonpar <- function(dat, mu_covariates, pi_covariates, pA = 0.5) {
+aipw_fit_naive_nonpar <- function(dat, mu_covariates, pi_covariates, pA = 0.5,
+                                  smoothness_orders = 1,
+                                  max_degree = 2,
+                                  num_knots = c(25, 10)) {
 
   # fit outcome regression --------------------------------------------------
 
   ## random forest among uncensored responders
-  outcome_reg <- ranger(
-    x = filter(dat, R == 1, C == 0) %>%
+  outcome_reg <- fit_hal(
+    X = filter(dat, R == 1, C == 0) %>%
       select(all_of(c("A", mu_covariates))),
-    y = filter(dat, R == 1, C == 0) %>%
-      select(Y) %>% unlist() %>% factor(),
-    probability = T)
-  
+    Y = filter(dat, R == 1, C == 0) %>%
+      select(Y) %>% unlist(),
+    family = "binomial",
+    smoothness_orders = smoothness_orders,
+    max_degree = max_degree,
+    num_knots = num_knots)
+
   ## data sets with A set to 0, 1
   dat0 <- dat %>% mutate(A = 0, Y = 0)
   dat1 <- dat %>% mutate(A = 1, Y = 0)
-  
+
   ## predict outcomes under A set to 0, 1
   dat$muhat_0 <- NA_real_
   dat$muhat_0[dat$S == 0 | dat$R == 1] <- predict(
     outcome_reg,
-    data = dat0 %>% 
-      select(all_of(c("A", mu_covariates))))$predictions[,2]
-  
+    new_data = dat0 %>%
+      select(all_of(c("A", mu_covariates))))
+
   dat$muhat_1 <- NA_real_
   dat$muhat_1[dat$S == 0 | dat$R == 1] <- predict(
     outcome_reg,
-    data = dat1 %>% 
-      select(all_of(c("A", mu_covariates))))$predictions[,2]
+    new_data = dat1 %>%
+      select(all_of(c("A", mu_covariates))))
 
 
   # censoring model ---------------------------------------------------------
 
   ## logistic regression
-  censor_reg <- ranger(
-    x = dat %>%
+  censor_reg <- fit_hal(
+    X = dat %>%
       select(all_of(pi_covariates)),
-    y = dat %>%
-      select(C) %>% unlist() %>% factor(),
-    probability = T)
+    Y = dat %>%
+      select(C) %>% unlist(),
+    family = "binomial",
+    smoothness_orders = smoothness_orders,
+    max_degree = max_degree,
+    num_knots = num_knots)
 
   ## predicted values
   dat$piC <- NA_real_
   dat$piC <-
     1 - predict(
       censor_reg,
-      data = dat %>% 
-        select(all_of(pi_covariates)))$predictions[,2]
+      new_data = dat %>%
+        select(all_of(pi_covariates)))
 
   ## estimated arm * response probabilities in trial data
   dat$piA <- ifelse(dat$A == 1, pA, 1 - pA)
-  
+
   ## joint probabilities
   dat$pihat <- dat$piA * dat$piC
 
@@ -86,49 +95,24 @@ aipw_fit_naive_nonpar <- function(dat, mu_covariates, pi_covariates, pA = 0.5) {
 
       ## outcome regression terms
       or_0 = muhat_0 * wt,
-      or_1 = muhat_1 * wt) %>%
+      or_1 = muhat_1 * wt,
+
+      ## influence function
+      if_0 = ((1 - C) * ipw_0 / n_trial_hat[1] +
+                or_0 / n_aux) * nrow(dat),
+      if_1 = ((1 - C) * ipw_1 / n_trial_hat[2] +
+                or_1 / n_aux) * nrow(dat)) %>%
 
     summarise(
 
-      ## AIPW estimators
-      etahat_0 = sum((ipw_0 / n_trial_hat[1]) +
-                       (or_0 / n_aux)),
-      etahat_1 = sum((ipw_1 / n_trial_hat[2]) +
-                       (or_1 / n_aux)))
+      ## AIPW estimator
+      etahat_0 = mean(if_0),
+      etahat_1 = mean(if_1),
 
-
-  # variance estimator ------------------------------------------------------
-
-  ## variance estimator
-  est_var <- get.sand.est(
-    param = c(etahat$etahat_0, etahat$etahat_1),
-    n = nrow(dat),
-    get.psi = function(xx) {
-
-      ## extract pieces of combined parameter
-      eh0 <- xx[1]
-      eh1 <- xx[2]
-
-      ## stacked estimating function
-      cbind(
-
-        ## etahat estimating function
-        case_when(
-          dat$C == 0 & dat$A == 0 ~
-            (nrow(dat) / n_trial_hat[1]) * (dat$Y - dat$muhat_0) / dat$pihat,
-          .default = 0) +
-          (nrow(dat) / n_aux) * dat$wt * dat$muhat_0 -
-          eh0,
-
-        case_when(
-          dat$C == 0 & dat$A == 1 ~
-            (nrow(dat) / n_trial_hat[2]) * (dat$Y - dat$muhat_1) / dat$pihat,
-          .default = 0) +
-          (nrow(dat) / n_aux) * dat$wt * dat$muhat_1 -
-          eh1)
-
-    }
-  )
+      ## covariance estimator
+      cov_00 = var(if_0) / nrow(dat),
+      cov_01 = cov(if_0, if_1) / nrow(dat),
+      cov_11 = var(if_1) / nrow(dat))
 
 
   # return list of results --------------------------------------------------
@@ -140,10 +124,9 @@ aipw_fit_naive_nonpar <- function(dat, mu_covariates, pi_covariates, pA = 0.5) {
       data.frame(
         etahat_0 = etahat$etahat_0,
         etahat_1 = etahat$etahat_1,
-        cov_00 = est_var[1, 1],
-        cov_01 = est_var[1, 2],
-        cov_11 = est_var[2, 2]),
-
+        cov_00 = etahat$cov_00,
+        cov_01 = etahat$cov_01,
+        cov_11 = etahat$cov_11),
 
     # outcome regression model results
     outcome_reg_results = outcome_reg,
@@ -160,18 +143,26 @@ aipw_fit_naive_nonpar <- function(dat, mu_covariates, pi_covariates, pA = 0.5) {
 
 
 
-## proposed AIPW estimator allowing A --> R effect
-aipw_fit_nonpar <- function(dat, mu_covariates, pi_covariates) {
+## proposed AIPW estimator with HAL
+aipw_fit_nonpar <- function(dat, mu_covariates, pi_covariates,
+                            smoothness_orders = 1,
+                            max_degree = 2,
+                            num_knots = c(25, 10)) {
 
   # fit outcome regression --------------------------------------------------
 
-  ## random forest among uncensored responders
-  outcome_reg <- ranger(
-    x = filter(dat, S == 1, R == 1, C == 0) %>%
+  ## highly adaptive LASSO among uncensored responders
+  #tic("fit outcome regression")
+  outcome_reg <- fit_hal(
+    X = filter(dat, S == 1, R == 1, C == 0) %>%
       select(all_of(c("A", mu_covariates))),
-    y = filter(dat, S == 1, R == 1, C == 0) %>%
-      select(Y) %>% unlist() %>% factor(),
-    probability = T)
+    Y = filter(dat, S == 1, R == 1, C == 0) %>%
+      select(Y) %>% unlist(),
+    family = "binomial",
+    smoothness_orders = smoothness_orders,
+    max_degree = max_degree,
+    num_knots = num_knots)
+  #toc()
 
   ## data sets with A set to 0, 1
   dat0 <- dat %>% mutate(A = 0, Y = 0)
@@ -181,14 +172,14 @@ aipw_fit_nonpar <- function(dat, mu_covariates, pi_covariates) {
   dat$muhat_0 <- NA_real_
   dat$muhat_0[dat$S == 0 | dat$R == 1] <- predict(
     outcome_reg,
-    data = dat0 %>% filter(dat$S == 0 | dat$R == 1) %>%
-      select(all_of(c("A", mu_covariates))))$predictions[,2]
+    new_data = dat0 %>% filter(dat$S == 0 | dat$R == 1) %>%
+      select(all_of(c("A", mu_covariates))))
 
   dat$muhat_1 <- NA_real_
   dat$muhat_1[dat$S == 0 | dat$R == 1] <- predict(
     outcome_reg,
-    data = dat1 %>% filter(dat$S == 0 | dat$R == 1) %>%
-      select(all_of(c("A", mu_covariates))))$predictions[,2]
+    new_data = dat1 %>% filter(dat$S == 0 | dat$R == 1) %>%
+      select(all_of(c("A", mu_covariates))))
 
 
   # response model ----------------------------------------------------------
@@ -202,17 +193,27 @@ aipw_fit_nonpar <- function(dat, mu_covariates, pi_covariates) {
   rdat1 <- dat %>% filter((Q == 1 & A == 1) | S == 0)
 
   ## random forest models for Q membership in restricted data
-  Q_reg_0 <- ranger(
-    x = rdat0 %>% select(all_of(pi_covariates)),
-    y = rdat0 %>% select(Q) %>% unlist() %>% factor(),
-    case.weights = rdat0$wt,
-    probability = T)
+  #tic("fit response model 0")
+  Q_reg_0 <- fit_hal(
+    X = rdat0 %>% select(all_of(pi_covariates)),
+    Y = rdat0 %>% select(Q) %>% unlist(),
+    weights = rdat0$wt,
+    family = "binomial",
+    smoothness_orders = smoothness_orders,
+    max_degree = max_degree,
+    num_knots = num_knots)
+  #toc()
 
-  Q_reg_1 <- ranger(
-    x = rdat1 %>% select(all_of(pi_covariates)),
-    y = rdat1 %>% select(Q) %>% unlist() %>% factor(),
-    case.weights = rdat1$wt,
-    probability = T)
+  #tic("fit response model 1")
+  Q_reg_1 <- fit_hal(
+    X = rdat1 %>% select(all_of(pi_covariates)),
+    Y = rdat1 %>% select(Q) %>% unlist(),
+    weights = rdat1$wt,
+    family = "binomial",
+    smoothness_orders = smoothness_orders,
+    max_degree = max_degree,
+    num_knots = num_knots)
+  #toc()
 
   ## estimated Q probabilities among uncensored responders
   Q_ind <- dat$Q == 1
@@ -220,14 +221,14 @@ aipw_fit_nonpar <- function(dat, mu_covariates, pi_covariates) {
   dat$Q_prob[Q_ind & dat$A == 0] <-
     predict(
       Q_reg_0,
-      data = dat %>% filter(Q_ind & A == 0) %>%
-        select(all_of(pi_covariates)))$predictions[,2]
+      new_data = dat %>% filter(Q_ind & A == 0) %>%
+        select(all_of(pi_covariates)))
 
   dat$Q_prob[Q_ind & dat$A == 1] <-
     predict(
       Q_reg_1,
-      data = dat %>% filter(Q_ind & A == 1) %>%
-        select(all_of(pi_covariates)))$predictions[,2]
+      new_data = dat %>% filter(Q_ind & A == 1) %>%
+        select(all_of(pi_covariates)))
 
   ## estimated propensity scores in trial data
   dat$pihat <- NA_real_
@@ -266,49 +267,24 @@ aipw_fit_nonpar <- function(dat, mu_covariates, pi_covariates) {
 
       ## outcome regression terms
       or_0 = ifelse(S == 0, muhat_0 * wt, 0),
-      or_1 = ifelse(S == 0, muhat_1 * wt, 0)) %>%
+      or_1 = ifelse(S == 0, muhat_1 * wt, 0),
+
+      ## influence function
+      if_0 = (S * R * (1 - C) * ipw_0 / n_trial_hat[1] +
+        (1 - S) * or_0 / n_aux) * nrow(dat),
+      if_1 = (S * R * (1 - C) * ipw_1 / n_trial_hat[2] +
+        (1 - S) * or_1 / n_aux) * nrow(dat)) %>%
 
     summarise(
 
-      ## AIPW estimators
-      etahat_0 = sum((ipw_0 / n_trial_hat[1]) +
-                       (or_0 / n_aux)),
-      etahat_1 = sum((ipw_1 / n_trial_hat[2]) +
-                       (or_1 / n_aux)))
+      ## AIPW estimator
+      etahat_0 = mean(if_0),
+      etahat_1 = mean(if_1),
 
-
-  # variance estimator ------------------------------------------------------
-
-  ## variance estimator
-  est_var <- get.sand.est(
-    param = c(etahat$etahat_0, etahat$etahat_1),
-    n = nrow(dat),
-    get.psi = function(xx) {
-
-      ## extract pieces of combined parameter
-      eh0 <- xx[1]
-      eh1 <- xx[2]
-
-      ## estimating function
-      cbind(
-
-        ## etahat estimating function
-        case_when(
-          dat$Q == 1 & dat$A == 0 ~
-            (nrow(dat) / n_trial_hat[1]) * (dat$Y - dat$muhat_0) / dat$pihat,
-          dat$S == 0 ~
-            (nrow(dat) / n_aux) * dat$wt * dat$muhat_0,
-          .default = 0) - eh0,
-
-        case_when(
-          dat$Q == 1 & dat$A == 1 ~
-            (nrow(dat) / n_trial_hat[2]) * (dat$Y - dat$muhat_1) / dat$pihat,
-          dat$S == 0 ~
-            (nrow(dat) / n_aux) * dat$wt * dat$muhat_1,
-          .default = 0) - eh1)
-
-    }
-  )
+      ## covariance estimator
+      cov_00 = var(if_0) / nrow(dat),
+      cov_01 = cov(if_0, if_1) / nrow(dat),
+      cov_11 = var(if_1) / nrow(dat))
 
 
   # return list of results --------------------------------------------------
@@ -320,9 +296,9 @@ aipw_fit_nonpar <- function(dat, mu_covariates, pi_covariates) {
       data.frame(
         etahat_0 = etahat$etahat_0,
         etahat_1 = etahat$etahat_1,
-        cov_00 = est_var[1, 1],
-        cov_01 = est_var[1, 2],
-        cov_11 = est_var[2, 2]),
+        cov_00 = etahat$cov_00,
+        cov_01 = etahat$cov_01,
+        cov_11 = etahat$cov_11),
 
     # outcome regression model results
     outcome_reg_results = outcome_reg,

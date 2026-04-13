@@ -1,11 +1,11 @@
 ###############################################################################
 ###############################################################################
 
-# PopART Simulation 2 Analysis
+# PopART Simulation 3 Analysis
 
 # Brian Richardson
 
-# 2026-04-02
+# 2026-04-09
 
 ###############################################################################
 ###############################################################################
@@ -30,7 +30,7 @@ sim.out.list <- lapply(
   X = 0:9,
   FUN = function(clust) {
     cbind(clust,
-          read.csv(paste0("sim_data/sim2/sd",
+          read.csv(paste0("sim_data/sim3/sd",
                           clust, ".csv")))
   })
 
@@ -103,7 +103,7 @@ sim.res %>%
 
 
 ## save image
-ggsave("sim_figures/sim2/sim2_estimates.png",
+ggsave("sim_figures/sim3/sim3_estimates.png",
        dpi = 600, width = 8, height = 6)
 
 
@@ -182,7 +182,7 @@ summary.table %>%
         legend.spacing.y = unit(-5, "pt"))
 
 ## save image
-ggsave("sim_figures/sim2/sim2_variance.png",
+ggsave("sim_figures/sim3/sim3_variance.png",
        dpi = 600, width = 8, height = 6)
 
 ## table of selected variances
@@ -218,7 +218,7 @@ summary.table %>%
   guides(x = "axis_nested")
 
 ## save image
-ggsave("sim_figures/sim2/sim2_confidence.png",
+ggsave("sim_figures/sim3/sim3_confidence.png",
        dpi = 600, width = 8, height = 6)
 
 

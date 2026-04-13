@@ -1,11 +1,11 @@
 ###############################################################################
 ###############################################################################
 
-# PopART Simulation 2 Script
+# PopART Simulation 3 Script
 
 # Brian Richardson
 
-# 2026-04-02
+# 2026-04-09
 
 ###############################################################################
 ###############################################################################
@@ -19,7 +19,7 @@ rm(list = ls())
 library(dplyr)
 library(tidyr)
 library(devtools)
-library(hal9001)
+library(ranger)
 library(pbapply)
 
 # indicator for whether this R script is being run on the cluster
@@ -33,7 +33,7 @@ setwd(dirname(dirname(getwd())))
 
 # load crown and simulation functions
 load_all()
-source("simulation/sim_functions/sim2.R")
+source("simulation/sim_functions/sim3.R")
 
 # simulation parameters ---------------------------------------------------
 
@@ -56,7 +56,7 @@ sim.in <- expand.grid(
 
 ## test run one simulation
 if (FALSE) {
-  sim2_fun(
+  sim3_fun(
     m = m,
     n_trial = sim.in$n_trial[1],
     n_aux = sim.in$n_aux[1],
@@ -72,7 +72,7 @@ sim.out <- pblapply(
   X = seq_len(nrow(sim.in)),
   FUN = function(ii) {
 
-    sim2_fun(
+    sim3_fun(
       m = m,
       n_trial = sim.in$n_trial[ii],
       n_aux = sim.in$n_aux[ii],
@@ -85,5 +85,5 @@ sim.out <- pblapply(
 
 ## save results
 write.csv(sim.out, row.names = F,
-          paste0("simulation/sim_data/sim2/sd",
+          paste0("simulation/sim_data/sim3/sd",
                  as.integer(cluster.id), ".csv"))
