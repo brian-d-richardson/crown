@@ -47,10 +47,6 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
     ## censoring probability among responders
     p_cens <- 0.3
 
-    ## indicator for correctly specified outcome and censoring models
-    mu_correct <- T
-    pi_correct <- T
-
     ## seed for random number generation
     seed <- 1
 

@@ -11,7 +11,8 @@
 ###############################################################################
 
 
-sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
+sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
+                     K, seed, sl_library, cvControl, run.checks = F) {
 
   # (for code checking only) ------------------------------------------------
 
@@ -23,7 +24,8 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
     ## load packages
     library(dplyr)
     library(tidyr)
-    library(ranger)
+    library(xgboost)
+    #library(SuperLearner)
     library(devtools)
 
     ## set work directory
@@ -62,13 +64,24 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
 
     ## number of folds
     K <- 5
+
+    ## covariates and model formulas
+    mu_fmla <- Y ~ A * (X1 + W1 + W2 + W3)
+    pi_fmla <- Q ~ X1 + W1 + W2 + W3
+    mu_covariates <- c("X1", "W1", "W2", "W3")
+    pi_covariates <- c("X1", "W1", "W2", "W3")
+
+    # SuperLearner settings (fast version for sims)
+    #sl_library = "SL.xgboost"
+    #cvControl = list(V = 2)
+
   }
 
   # simulate data -----------------------------------------------------------
 
   ## intercepts for R and C models (justified below)
-  R_int <- 0.4449358
-  C_int <- -0.8711302
+  R_int <- -1.417151
+  C_int <- -0.8532847
   if (FALSE) {
 
     ## simulate covariates once
@@ -81,12 +94,14 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
 
     ## solve for R model intercept: 0.4546268
     R_int <- uniroot(
-      f = function(ri) mean(plogis(ri + -2 * A * W1 + W2 * 0.2*W3^2)) - p_resp,
+      f = function(ri) mean(plogis(
+        ri +  + 2*as.numeric(W2^2 < 1))) - p_resp,
       interval = c(-10, 10))$root
 
     ## solve for C model intercept: -1.015664
     C_int <- uniroot(
-      f = function(ci) mean(plogis(ci - 0.25*A + 0.25*W1 + 0.2*W2^2*W3)) - p_cens,
+      f = function(ci) mean(plogis(
+        ci - 0.25*A + 0.25*W1)) - p_cens,
       interval = c(-10, 10))$root
   }
 
@@ -129,17 +144,17 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
       W3 = rnorm(n_trial, 0, 1),
 
       ## response indicator
-      pR = plogis(R_int - 2*A*W1 + 0.2*W2*W3^2),
+      pR = plogis(R_int + 2*as.numeric(W2^2 < 1)),
       R = rbinom(n_trial, 1, pR),
 
       ## censoring indicator
-      pC = plogis(C_int - 0.25*A + 0.25*W1 + 0.2*W2^2*W3),
+      pC = plogis(C_int - 0.25*A + 0.25*W1),
       C = rbinom(n_trial, 1, pC),
       C = ifelse(R == 1, C, 0),
 
       ## potential outcomes
-      mu0 = plogis(-1 + 2*W1),
-      mu1 = plogis(0 - 1*W1 + 0.2*sin(W2) - 0.2*W3^2 + 0.25*X1),
+      mu0 = ifelse(W2^2 < 1, 0.9, plogis(0.25*sin(pi*W3/4))),
+      mu1 = ifelse(W2^2 < 1, 0.1, plogis(0.25*sin(pi*W3/4))),
       Y0 = rbinom(n_trial, 1, mu0),
       Y1 = rbinom(n_trial, 1, mu1),
 
@@ -195,7 +210,7 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
 
     ## check response rate
     print(mean(trial_dat$R)); print(p_resp)
-    trial_dat %>% group_by(A, W1) %>% summarise(p_resp = mean(R)) %>% print()
+    trial_dat %>% group_by(W2^2 < 1) %>% summarise(p_resp = mean(R)) %>% print()
     plot(trial_dat$W2, trial_dat$pR)
     plot(trial_dat$W3, trial_dat$pR)
 
@@ -210,7 +225,7 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
 
     ## check mean potential outcomes in population
     print(eta0); print(eta1); print(eta1 - eta0)
-    trial_dat %>% group_by(W1) %>% summarise(
+    trial_dat %>% group_by(W2^2 < 1) %>% summarise(
       eta0 = mean(Y0), eta1 = mean(Y1)) %>%
       mutate(rd = eta1 - eta0) %>%
       print()
@@ -224,27 +239,40 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
     trial_dat %>% filter(R == 1) %>% summarise(m0 = mean(Y0), m1 = mean(Y1))
   }
 
-  # define parameters for analysis ------------------------------------------
-
-  ## covariates for outcome and propensity score models
-  mu_covariates <- c("X1", "W1", "W2", "W3")
-  pi_covariates <- c("X1", "W1", "W2", "W3")
-
-
   # analyze data ------------------------------------------------------------
 
-  ## proposed AIPW with nonparametric sample splitting
-  aipw_prop <- aipw_fit_nonpar_ss(
+  ## proposed AIPW with (incorrect) parametric models
+  mu_fmla <- Y ~ A * (X1 + W1 + W2 + W3)
+  pi_fmla <- Q ~ X1 + W1 + W2 + W3
+  aipw_par <- aipw_fit(
     dat = dat,
-    mu_covariates = mu_covariates,
-    pi_covariates = pi_covariates)
+    mu_fmla = mu_fmla,
+    pi_fmla = pi_fmla)
+
+  ## proposed AIPW-NSS-1
+  aipw_nss_v1 <- aipw_fit_nss_v1(
+    dat = dat,
+    mu_covariates = c("X1", "W1", "W2", "W3"),
+    pi_covariates = c("X1", "W1", "W2", "W3"),
+    K = K,
+    method = "xgboost")
+
+  ## proposed AIPW-NSS-2
+  aipw_nss_v2 <- aipw_fit_nss_v2(
+    dat = dat,
+    mu_covariates = c("X1", "W1", "W2", "W3"),
+    pi_covariates = c("X1", "W1", "W2", "W3"),
+    K = K,
+    method = "xgboost")
 
   # combine results ---------------------------------------------------------
 
   ## make data frame with results
   res <- bind_rows(
 
-    mutate(aipw_prop$eta_results, name = "aipw_prop")) %>%
+    mutate(aipw_par$eta_results, name = "aipw_par"),
+    mutate(aipw_nss_v1$eta_results, name = "aipw_nss1"),
+    mutate(aipw_nss_v2$eta_results, name = "aipw_nss2")) %>%
 
     separate(
       name,
@@ -266,8 +294,10 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
         labels = c("AIPW")),
       Version = factor(
         version,
-        levels = c("naive", "prop"),
-        labels = c("Naive", "Proposed"))) %>%
+        levels = c("par", "nss1", "nss2"),
+        labels = c("Parametric",
+                   "Nonparametric SS 1",
+                   "Nonparametric SS 2"))) %>%
 
     select(!c(est, version)) %>%
 
@@ -287,7 +317,8 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
       n_trial = n_trial,
       n_aux = n_aux,
       p_resp = p_resp,
-      p_cens = p_cens)
+      p_cens = p_cens,
+      K = K)
 
   # Plot Results ------------------------------------------------------------
 
@@ -319,10 +350,9 @@ sim3_fun <- function(m, n_trial, n_aux, p_resp, p_cens, seed, run.checks = F) {
             legend.position = "none")
   }
 
-  # Return Results ----------------------------------------------------------
+  # return results ----------------------------------------------------------
 
   return(res)
 }
 
-#sim2_fun(m = 20, n_trial = 4E3, n_aux = 1E3, p_resp = 0.5, p_cens = 0.3, mu_correct = T, pi_correct = T, seed = 1)
 

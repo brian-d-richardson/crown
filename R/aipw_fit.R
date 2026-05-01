@@ -15,13 +15,11 @@ aipw_fit_naive <- function(dat, mu_fmla, C_fmla, pA = 0.5) {
   dat1 <- dat %>% mutate(A = 1, Y = 0)
 
   ## predict outcomes under A set to 0, 1
-  dat$muhat_0 <- NA_real_
   dat$muhat_0 <- predict(
     outcome_reg,
     newdata = dat0,
     type = "response")
 
-  dat$muhat_1 <- NA_real_
   dat$muhat_1 <- predict(
     outcome_reg,
     newdata = dat1,
@@ -197,7 +195,7 @@ aipw_fit_naive <- function(dat, mu_fmla, C_fmla, pA = 0.5) {
 
 
 
-## proposed AIPW estimator allowing A --> R effect
+## proposed AIPW estimator
 aipw_fit <- function(dat, mu_fmla, pi_fmla) {
 
 

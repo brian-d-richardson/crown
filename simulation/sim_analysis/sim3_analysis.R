@@ -45,11 +45,13 @@ sim.res <- sim.res %>%
   mutate(
     Estimator = factor(Estimator,
                        levels = c("AIPW")),
+    Version = factor(Version,
+                       levels = c("Parametric",
+                                  "Nonparametric SS 1",
+                                  "Nonparametric SS 2")),
     Trial_Size = factor(n_trial),
     Aux_Size = factor(n_aux),
-    Size = factor(paste0(n_trial, "_", n_aux)),
-    exp_cons = ifelse(
-      Version == "Proposed", 1, 0))
+    Size = factor(paste0(n_trial, "_", n_aux)))
 
 ## find true eta0, eta1, and effect size
 ggplot(sim.res, aes(x = eta_0)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
@@ -59,6 +61,7 @@ eta_1 <- mean(sim.res$eta_1)
 print(round(c(eta_0, eta_1), 3))
 rd <- eta_1 - eta_0
 rr <- eta_1 / eta_0
+print(round(rd, 3))
 
 ## number of simulations
 n.sim <- n_distinct(sim.res$seed)
@@ -66,7 +69,7 @@ n.sim <- n_distinct(sim.res$seed)
 # check for errors --------------------------------------------------------
 
 na.res <- sim.res %>%
-  group_by(Trial_Size, Aux_Size, Version, Estimator) %>%
+  group_by(Trial_Size, Aux_Size, Estimator, Version) %>%
   summarise(prop.na = mean(is.na(etahat_0)))
 
 na.res %>%
@@ -80,7 +83,7 @@ pal <- c("#FF6800", "#803E75", "#C10020", "#FFB300")
 # plot results ------------------------------------------------------------
 
 ## plot RD estimates
-sim.res %>%
+rd_plot <- sim.res %>%
   ggplot(aes(
     x = interaction(n_aux, n_trial),
     y = rdhat,
@@ -101,16 +104,18 @@ sim.res %>%
         legend.position = "none") +
   guides(x = "axis_nested")
 
+rd_plot
 
 ## save image
 ggsave("sim_figures/sim3/sim3_estimates.png",
-       dpi = 600, width = 8, height = 6)
+       dpi = 600, width = 5, height = 3)
+
 
 
 # summarize performance ---------------------------------------------------
 
 summary.table <- sim.res %>%
-  select(seed, Version, Estimator, n_trial, n_aux,
+  select(seed, Version, Estimator, n_trial, n_aux, K,
          eta_0, eta_1, rd, rr,
          etahat_0, etahat_1, rdhat, rrhat,
          cov_00, cov_01, cov_11, var_rd, var_rr) %>%
@@ -135,10 +140,10 @@ summary.table <- sim.res %>%
   pivot_wider(
     names_from = type,
     values_from = value,
-    id_cols = c(seed, Version, Estimator, n_trial, n_aux, param)) %>%
+    id_cols = c(seed, Version, Estimator, n_trial, n_aux, K, param)) %>%
   mutate(ci_lower = est - qnorm(0.975) * sqrt(Var),
          ci_upper = est + qnorm(0.975) * sqrt(Var)) %>%
-  group_by(Version, Estimator, n_trial, n_aux, param) %>%
+  group_by(Version, Estimator, n_trial, n_aux, K, param) %>%
   summarise(
     bias = mean(est - truth),
     emp_var = var(est),
@@ -151,28 +156,30 @@ summary.table <- sim.res %>%
 
 # plot variance results ---------------------------------------------------
 
-summary.table %>%
-  #filter(n_trial == n_aux) %>%
-  mutate(n_both = factor(paste0(n_aux, "_", n_trial))) %>%
+var_plot <- summary.table %>%
+  mutate(n_both = factor(paste0(
+    "n^{aux}==", n_aux, "*','~~", "n^{trial}==", n_trial))) %>%
   ggplot(
     aes(x = emp_var,
         y = est_var,
         color = n_both,
         shape = Param)) +
   scale_x_continuous(transform = "log10",
-                     breaks = c(0.001, 0.01, 0.1)) +
+                     breaks = c(0.001, 0.01)) +
   scale_y_continuous(transform = "log10",
-                     breaks = c(0.001, 0.01, 0.1)) +
+                     breaks = c(0.001, 0.01)) +
   scale_color_manual(
-    values = pal) +
+    values = pal,
+    labels = parse_format()) +
   scale_shape_discrete(labels = parse_format()) +
   geom_abline(linetype = "dashed") +
   geom_point(size = 3) +
-  facet_nested(Estimator ~ Version) +
+  facet_nested(~ Version) +
   labs(y = "Average Estimated Variance",
        x = "Empirical Variance",
-       color = "Trial and Auxiliary Sample Size",
+       color = "Sample Size",
        shape = "Parameter") +
+  guides(color = guide_legend(nrow = 2)) +
   theme_bw() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -181,9 +188,12 @@ summary.table %>%
         legend.box = "vertical",
         legend.spacing.y = unit(-5, "pt"))
 
+var_plot
+
 ## save image
 ggsave("sim_figures/sim3/sim3_variance.png",
-       dpi = 600, width = 8, height = 6)
+       dpi = 600, width = 5.8, height = 4)
+
 
 ## table of selected variances
 summary.table %>%
@@ -193,7 +203,7 @@ summary.table %>%
 
 # plot confidence interval coverage ---------------------------------------
 
-summary.table %>%
+ci_plot <- summary.table %>%
   ggplot(
     aes(x = interaction(n_aux, n_trial),
         y = ci_cov,
@@ -205,7 +215,7 @@ summary.table %>%
   scale_color_manual(labels = parse_format(),
                      values = pal) +
   scale_shape_discrete(labels = parse_format()) +
-  facet_nested(Estimator ~ Version) +
+  facet_nested(~ Version) +
   labs(y = "Empirical CI Coverage",
        x = "Auxiliary and Trial Sample Sizes",
        color = "Estimand",
@@ -217,8 +227,9 @@ summary.table %>%
         legend.position = "bottom") +
   guides(x = "axis_nested")
 
+ci_plot
+
 ## save image
 ggsave("sim_figures/sim3/sim3_confidence.png",
-       dpi = 600, width = 8, height = 6)
-
+       dpi = 600, width = 5, height = 3.5)
 

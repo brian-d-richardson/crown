@@ -19,7 +19,7 @@ rm(list = ls())
 library(dplyr)
 library(tidyr)
 library(devtools)
-library(ranger)
+library(xgboost)
 library(pbapply)
 
 # indicator for whether this R script is being run on the cluster
@@ -44,14 +44,17 @@ base.seed <- 10^6 * as.integer(cluster.id)
 m <- 20
 p_resp <- 0.5
 p_cens <- 0.3
+sl_library = "SL.xgboost"
+cvControl = list(V = 2)
 
 ## number of simulation replicates
 n.rep <- 1
 
 ## simulation inputs
 sim.in <- expand.grid(
-  n_trial = c(500, 5000),
-  n_aux = c(500, 5000),
+  n_trial = c(500, 5000, 50000),
+  n_aux = c(500, 5000, 50000),
+  K = c(5, 10),
   sim.id = 1:n.rep + base.seed)
 
 ## test run one simulation
@@ -60,8 +63,11 @@ if (FALSE) {
     m = m,
     n_trial = sim.in$n_trial[1],
     n_aux = sim.in$n_aux[1],
+    K = sim.in$K[1],
     p_resp = p_resp,
     p_cens = p_cens,
+    sl_library = sl_library,
+    cvControl = cvControl,
     seed = sim.in$sim.id[1])
 }
 
@@ -76,8 +82,11 @@ sim.out <- pblapply(
       m = m,
       n_trial = sim.in$n_trial[ii],
       n_aux = sim.in$n_aux[ii],
+      K = sim.in$K[ii],
       p_resp = p_resp,
       p_cens = p_cens,
+      sl_library = sl_library,
+      cvControl = cvControl,
       seed = sim.in$sim.id[ii])
 
   }) %>%
