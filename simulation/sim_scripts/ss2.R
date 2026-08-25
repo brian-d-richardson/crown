@@ -5,7 +5,7 @@
 
 # Brian Richardson
 
-# 2026-04-02
+# 2026-08-24
 
 ###############################################################################
 ###############################################################################
@@ -19,17 +19,19 @@ rm(list = ls())
 library(dplyr)
 library(tidyr)
 library(devtools)
-library(hal9001)
+library(xgboost)
 library(pbapply)
 
-# indicator for whether this R script is being run on the cluster
-cluster.id <- as.numeric(commandArgs(TRUE))
-on.cluster <- length(cluster.id) > 0
-if (!on.cluster) {
-  setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown/simulation/sim_scripts")
+# check if running on cluster (env variable is non-empty)
+env_task <- Sys.getenv("SLURM_ARRAY_TASK_ID")
+on.cluster <- env_task != ""
+if (on.cluster) {
+  cluster.id <- as.numeric(env_task)
+  setwd(dirname(getwd()))
+} else {
   cluster.id <- 0
+  setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown")
 }
-setwd(dirname(dirname(getwd())))
 
 # load crown and simulation functions
 load_all()
@@ -52,6 +54,7 @@ n.rep <- 1
 sim.in <- expand.grid(
   n_trial = c(500, 5000),
   n_aux = c(500, 5000),
+  K = c(5, 10),
   sim.id = 1:n.rep + base.seed)
 
 ## test run one simulation
@@ -60,6 +63,7 @@ if (FALSE) {
     m = m,
     n_trial = sim.in$n_trial[1],
     n_aux = sim.in$n_aux[1],
+    K = sim.in$K[1],
     p_resp = p_resp,
     p_cens = p_cens,
     seed = sim.in$sim.id[1])
@@ -76,6 +80,7 @@ sim.out <- pblapply(
       m = m,
       n_trial = sim.in$n_trial[ii],
       n_aux = sim.in$n_aux[ii],
+      K = sim.in$K[ii],
       p_resp = p_resp,
       p_cens = p_cens,
       seed = sim.in$sim.id[ii])

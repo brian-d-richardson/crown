@@ -1,12 +1,35 @@
-## nonparametric nuisance estimation wrapper funtion
+#' Nonparametric estimation wrapper
+#'
+#' estimate the conditional distribution of a binary outcome using either
+#' xgboost or SuperLearner
+#'
+#' @param x a numeric matrix of covariates
+#' @param y a binary vector of outcomes
+#'
+#' @param method either "xgboost" or "SuperLearner", method of nonparametric
+#' estimation
+#'
+#' @param arguments an optional list with arguments to pass to `nonpar_est`. If
+#' `method` is "SuperLearner", `arguments` must contain `SL.library` and
+#' `cvControl`
+#'
+#' @param wts an optional numeric vector of observation weights
+#'
+#' @return a fitted model
+#'
+#' @export
 nonpar_est <- function(x, y, method, arguments = NULL, wts = NULL) {
 
   mod <- NULL
 
   if (method == "SuperLearner") {
 
+    stopifnot(
+      "arguments must contain SL.library" = !is.null(arguments$SL.library),
+      "arguments must contain cvControl" = !is.null(arguments$cvControl))
+
     mod <- SuperLearner::SuperLearner(
-      Y = as.numeric(as.character(y)),
+      Y = y,
       X = x,
       family = binomial(),
       obsWeights = wts,
@@ -17,7 +40,7 @@ nonpar_est <- function(x, y, method, arguments = NULL, wts = NULL) {
 
     mod <- xgboost::xgboost(
       x = x,
-      y = y,
+      y = as.factor(y),
       objective = "binary:logistic",
       weights = wts)
 
@@ -28,7 +51,20 @@ nonpar_est <- function(x, y, method, arguments = NULL, wts = NULL) {
 }
 
 
-## nonparametric nuisance prediction wrapper function
+#' Nonparametric prediction wrapper
+#'
+#' predict probabilites using a fitted model from xgboost or SuperLearner
+#'
+#' @param method either "xgboost" or "SuperLearner", method of nonparametric
+#' estimation
+#'
+#' @param mod a fitted model object, output of `nonpar_est`
+#'
+#' @param newdata a numeric matrix, predictors from new data
+#'
+#' @return a numeric vector, predicted probabilities
+#'
+#' @export
 nonpar_pred <- function(mod, newdata, method) {
 
   pred <- NULL
@@ -47,7 +83,7 @@ nonpar_pred <- function(mod, newdata, method) {
       newdata = newdata)
 
   } else {
-    print("unrecognized method")
+    stop("unrecognized method: must be 'xgboost' or 'SuperLearner'")
   }
 
   return(pred)

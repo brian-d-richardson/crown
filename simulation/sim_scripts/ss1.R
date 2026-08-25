@@ -5,7 +5,7 @@
 
 # Brian Richardson
 
-# 2026-04-02
+# 2026-08-24
 
 ###############################################################################
 ###############################################################################
@@ -21,14 +21,16 @@ library(tidyr)
 library(devtools)
 library(pbapply)
 
-# indicator for whether this R script is being run on the cluster
-cluster.id <- as.numeric(commandArgs(TRUE))
-on.cluster <- length(cluster.id) > 0
-if (!on.cluster) {
-  setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown/simulation/sim_scripts")
+# check if running on cluster (env variable is non-empty)
+env_task <- Sys.getenv("SLURM_ARRAY_TASK_ID")
+on.cluster <- env_task != ""
+if (on.cluster) {
+  cluster.id <- as.numeric(env_task)
+  setwd(dirname(getwd()))
+} else {
   cluster.id <- 0
+  setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown")
 }
-setwd(dirname(dirname(getwd())))
 
 # load crown and simulation functions
 load_all()
@@ -74,7 +76,7 @@ if (FALSE) {
 sim.out <- pblapply(
   X = seq_len(nrow(sim.in)),
   FUN = function(ii) {
-    
+
     sim1_fun(
       m = m,
       n_trial = sim.in$n_trial[ii],
@@ -84,8 +86,8 @@ sim.out <- pblapply(
       p_resp = p_resp,
       p_cens = p_cens,
       seed = sim.in$sim.id[ii])
-    
-  }) %>% 
+
+  }) %>%
   bind_rows()
 
 ## save results

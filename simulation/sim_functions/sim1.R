@@ -1,7 +1,7 @@
 ###############################################################################
 ###############################################################################
 
-# Simulation 1 Development: crown simulation 1: model mis-specification
+# Simulation 1 Function: parametric model mis-specification
 
 # Brian Richardson
 
@@ -242,7 +242,7 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
     mu_fmla = mu_fmla)
 
   ## proposed g-formula
-  gfmla_prop <- gfmla_fit(
+  gfmla_crown <- gfmla_fit(
     dat = dat,
     mu_fmla = mu_fmla)
 
@@ -252,7 +252,7 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
     C_fmla = C_fmla)
 
   ## proposed IPW
-  ipw_prop <- ipw_fit(
+  ipw_crown <- ipw_fit(
     dat = dat,
     pi_fmla = pi_fmla)
 
@@ -263,7 +263,7 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
     C_fmla = C_fmla)
 
   ## proposed AIPW
-  aipw_prop <- aipw_fit(
+  aipw_crown <- aipw_fit(
     dat = dat,
     mu_fmla = mu_fmla,
     pi_fmla = pi_fmla)
@@ -271,17 +271,30 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
 
   # combine results ---------------------------------------------------------
 
+  ## helper function to format results
+  extract_eta_info <- function(name) {
+
+    obj <- get(name)
+
+    data.frame(
+      etahat_0 = obj$eta_hat[1],
+      etahat_1 = obj$eta_hat[2],
+      cov_00 = obj$eta_hat_cov[1, 1],
+      cov_01 = obj$eta_hat_cov[1, 2],
+      cov_11 = obj$eta_hat_cov[2, 2],
+      name = name,
+      stringsAsFactors = FALSE)
+  }
+
   ## make data frame with results
   res <- bind_rows(
 
-    mutate(gfmla_naive$eta_results, name = "gfmla_naive"),
-    mutate(gfmla_prop$eta_results, name = "gfmla_prop"),
-
-    mutate(ipw_naive$eta_results, name = "ipw_naive"),
-    mutate(ipw_prop$eta_results, name = "ipw_prop"),
-
-    mutate(aipw_naive$eta_results, name = "aipw_naive"),
-    mutate(aipw_prop$eta_results, name = "aipw_prop")) %>%
+    extract_eta_info("gfmla_naive"),
+    extract_eta_info("gfmla_crown"),
+    extract_eta_info("ipw_naive"),
+    extract_eta_info("ipw_crown"),
+    extract_eta_info("aipw_naive"),
+    extract_eta_info("aipw_crown")) %>%
 
     separate(
       name,
@@ -292,6 +305,7 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
 
       rdhat = etahat_1 - etahat_0,
       rrhat = etahat_1 / etahat_0,
+
       var_rd = cov_11 + cov_00 - 2*cov_01,
       var_rr = (cov_11 / (etahat_0^2)) +
         (cov_00 * (etahat_1^2) / (etahat_0^4)) -
@@ -303,8 +317,8 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
         labels = c("IPW", "G-Formula", "AIPW")),
       Version = factor(
         version,
-        levels = c("naive", "prop"),
-        labels = c("Naive", "Proposed"))) %>%
+        levels = c("naive", "crown"),
+        labels = c("Naive", "Crown"))) %>%
 
     select(!c(est, version)) %>%
 

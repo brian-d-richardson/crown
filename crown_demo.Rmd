@@ -17,6 +17,7 @@ rm(list = ls())
 library(dplyr)
 library(tidyr)
 library(devtools)
+library(ggplot2)
 load_all()
 
 ```
@@ -262,7 +263,7 @@ gfmla_naive <- gfmla_fit_naive(
   mu_fmla = mu_fmla)
 
 ## proposed g-formula
-gfmla_prop <- gfmla_fit(
+gfmla_crown <- gfmla_fit(
   dat = dat,
   mu_fmla = mu_fmla)
 
@@ -278,7 +279,7 @@ ipw_naive <- ipw_fit_naive(
   C_fmla = C_fmla)
 
 ## proposed IPW
-ipw_prop <- ipw_fit(
+ipw_crown <- ipw_fit(
   dat = dat,
   pi_fmla = pi_fmla)
 
@@ -295,7 +296,7 @@ aipw_naive <- aipw_fit_naive(
   C_fmla = C_fmla)
 
 ## proposed AIPW
-aipw_prop <- aipw_fit(
+aipw_crown <- aipw_fit(
   dat = dat,
   mu_fmla = mu_fmla,
   pi_fmla = pi_fmla)
@@ -307,17 +308,30 @@ combine results
 
 ```{r}
 
+## helper function to format results
+extract_eta_info <- function(name) {
+  
+  obj <- get(name)
+
+  data.frame(
+    etahat_0 = obj$eta_hat[1],
+    etahat_1 = obj$eta_hat[2],
+    cov_00 = obj$eta_hat_cov[1, 1],
+    cov_01 = obj$eta_hat_cov[1, 2],
+    cov_11 = obj$eta_hat_cov[2, 2],
+    name = name,
+    stringsAsFactors = FALSE)
+}
+
 ## make data frame with results
 res <- bind_rows(
   
-  mutate(gfmla_naive$eta_results, name = "gfmla_naive"),
-  mutate(gfmla_prop$eta_results, name = "gfmla_prop"),
-  
-  mutate(ipw_naive$eta_results, name = "ipw_naive"),
-  mutate(ipw_prop$eta_results, name = "ipw_prop"),
-  
-  mutate(aipw_naive$eta_results, name = "aipw_naive"),
-  mutate(aipw_prop$eta_results, name = "aipw_prop")) %>% 
+  extract_eta_info("gfmla_naive"),
+  extract_eta_info("gfmla_crown"),
+  extract_eta_info("ipw_naive"),
+  extract_eta_info("ipw_crown"),
+  extract_eta_info("aipw_naive"),
+  extract_eta_info("aipw_crown")) %>% 
   
   separate(
     name,
@@ -328,10 +342,16 @@ res <- bind_rows(
     
     rdhat = etahat_1 - etahat_0,
     rrhat = etahat_1 / etahat_0,
+    
     var_rd = cov_11 + cov_00 - 2*cov_01,
     var_rr = (cov_11 / (etahat_0^2)) +
       (cov_00 * (etahat_1^2) / (etahat_0^4)) -
       cov_01 * 2 * etahat_1 / (etahat_0^3),
+    
+    rd_ci_lower = rdhat - qnorm(0.975) * sqrt(var_rd),
+    rd_ci_upper = rdhat + qnorm(0.975) * sqrt(var_rd),
+    rr_ci_lower = rrhat - qnorm(0.975) * sqrt(var_rr),
+    rr_ci_upper = rrhat + qnorm(0.975) * sqrt(var_rr),
     
     Estimator = factor(
       est,
@@ -339,10 +359,43 @@ res <- bind_rows(
       labels = c("IPW", "G-Formula", "AIPW")),
     Version = factor(
       version,
-      levels = c("naive", "prop"),
-      labels = c("Naive", "Proposed"))) %>% 
+      levels = c("naive", "crown"),
+      labels = c("Naive", "Crown"))) %>% 
   
   select(!c(est, version))
+
+```
+
+create plots of results...
+
+```{r}
+
+res %>%
+      mutate(rd_lower = rdhat - qnorm(0.975) * sqrt(var_rd),
+             rd_upper = rdhat + qnorm(0.975) * sqrt(var_rd)) %>%
+    ggplot(aes(x = Estimator,
+               y = rdhat,
+               ymin = rd_lower,
+               ymax = rd_upper,
+               fill = Estimator,
+               color = Estimator)) +
+
+      geom_point() +
+      geom_linerange() +
+      geom_hline(aes(yintercept = rd),
+                 linetype = "dashed",
+                 color = "blue") +
+
+      facet_wrap(
+        ~ Version,
+        scales = "free_y") +
+      labs(y = expression(hat(RD)),
+           x = NULL) +
+      ggtitle("") +
+      theme_bw() +
+      theme(panel.grid.minor = element_blank(),
+            strip.text = element_text(face = "bold"),
+            legend.position = "none")
 
 ```
 
