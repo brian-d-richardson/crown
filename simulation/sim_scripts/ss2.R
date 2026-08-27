@@ -75,16 +75,24 @@ if (FALSE) {
 sim.out <- pblapply(
   X = seq_len(nrow(sim.in)),
   FUN = function(ii) {
-
-    sim2_fun(
-      m = m,
-      n_trial = sim.in$n_trial[ii],
-      n_aux = sim.in$n_aux[ii],
-      K = sim.in$K[ii],
-      p_resp = p_resp,
-      p_cens = p_cens,
-      seed = sim.in$sim.id[ii])
-
+    out <- tryCatch(
+      {
+        sim2_fun(
+          m = m,
+          n_trial = sim.in$n_trial[ii],
+          n_aux = sim.in$n_aux[ii],
+          K = sim.in$K[ii],
+          p_resp = p_resp,
+          p_cens = p_cens,
+          seed = sim.in$sim.id[ii])
+      },
+      error = function(e) {
+        message(sprintf("Error in row %d (sim.id = %s): %s",
+                        ii, sim.in$sim.id[ii], conditionMessage(e)))
+        NULL
+      }
+    )
+    out
   }) %>%
   bind_rows()
 

@@ -1,11 +1,11 @@
 ###############################################################################
 ###############################################################################
 
-# PopART Simulation 3 Analysis
+# PopART Simulation 2 Analysis
 
 # Brian Richardson
 
-# 2026-04-09
+# 2026-08-25
 
 ###############################################################################
 ###############################################################################
@@ -20,8 +20,10 @@ library(ggh4x)
 library(scales)
 library(legendry)
 library(RColorBrewer)
+library(here)
 
-setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown/simulation")
+setwd(here())
+setwd("simulation")
 
 # load results ------------------------------------------------------------
 
@@ -45,19 +47,24 @@ sim.res <- sim.res %>%
   mutate(
     Estimator = factor(Estimator,
                        levels = c("AIPW")),
-    Version = factor(Version,
-                       levels = c("Parametric",
-                                  "Nonparametric SS 1",
-                                  "Nonparametric SS 2")),
+    Version = factor(
+      Version,
+      levels = c("Parametric",
+                 "Nonparametric SS 1",
+                 "Nonparametric SS 2"),
+      labels = c("Parametric",
+                 "Nonparametric SS 1",
+                 "Nonparametric SS")),
     Trial_Size = factor(n_trial),
     Aux_Size = factor(n_aux),
     Size = factor(paste0(n_trial, "_", n_aux)))
 
 ## find true eta0, eta1, and effect size
-ggplot(sim.res, aes(x = eta_0)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
-ggplot(sim.res, aes(x = eta_1)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
-eta_0 <- mean(sim.res$eta_0)
-eta_1 <- mean(sim.res$eta_1)
+sim.res0 <- sim.res %>% filter(Version == "Parametric")
+ggplot(sim.res0, aes(x = eta_0)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
+ggplot(sim.res0, aes(x = eta_1)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
+eta_0 <- mean(sim.res0$eta_0)
+eta_1 <- mean(sim.res0$eta_1)
 print(round(c(eta_0, eta_1), 3))
 rd <- eta_1 - eta_0
 rr <- eta_1 / eta_0
@@ -68,12 +75,9 @@ n.sim <- n_distinct(sim.res$seed)
 
 # check for errors --------------------------------------------------------
 
-na.res <- sim.res %>%
-  group_by(Trial_Size, Aux_Size, Estimator, Version) %>%
-  summarise(prop.na = mean(is.na(etahat_0)))
-
-na.res %>%
-  arrange(-prop.na)
+sim.res %>%
+  group_by(Trial_Size, Aux_Size, K, Estimator, Version) %>%
+  summarise(n = n())
 
 
 # color palette -----------------------------------------------------------
@@ -84,6 +88,7 @@ pal <- c("#FF6800", "#803E75", "#C10020", "#FFB300")
 
 ## plot RD estimates
 rd_plot <- sim.res %>%
+  filter(Version %in% c("Parametric", "Nonparametric SS")) %>%
   ggplot(aes(
     x = interaction(n_aux, n_trial),
     y = rdhat,
@@ -115,6 +120,7 @@ ggsave("sim_figures/sim2/sim2_estimates.png",
 # summarize performance ---------------------------------------------------
 
 summary.table <- sim.res %>%
+  filter(Version %in% c("Parametric", "Nonparametric SS")) %>%
   select(seed, Version, Estimator, n_trial, n_aux, K,
          eta_0, eta_1, rd, rr,
          etahat_0, etahat_1, rdhat, rrhat,

@@ -20,8 +20,11 @@ library(ggh4x)
 library(scales)
 library(legendry)
 library(RColorBrewer)
+library(here)
 
-setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown/simulation")
+#setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown/simulation")
+setwd(here())
+setwd("simulation")
 
 # load results ------------------------------------------------------------
 
