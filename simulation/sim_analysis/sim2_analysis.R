@@ -52,15 +52,15 @@ sim.res <- sim.res %>%
       levels = c("Parametric",
                  "Nonparametric SS 1",
                  "Nonparametric SS 2"),
-      labels = c("Parametric",
+      labels = c("AIPW",
                  "Nonparametric SS 1",
-                 "Nonparametric SS")),
+                 "DML")),
     Trial_Size = factor(n_trial),
     Aux_Size = factor(n_aux),
     Size = factor(paste0(n_trial, "_", n_aux)))
 
 ## find true eta0, eta1, and effect size
-sim.res0 <- sim.res %>% filter(Version == "Parametric")
+sim.res0 <- sim.res %>% filter(Version == "AIPW")
 ggplot(sim.res0, aes(x = eta_0)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
 ggplot(sim.res0, aes(x = eta_1)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
 eta_0 <- mean(sim.res0$eta_0)
@@ -88,7 +88,7 @@ pal <- c("#FF6800", "#803E75", "#C10020", "#FFB300")
 
 ## plot RD estimates
 rd_plot <- sim.res %>%
-  filter(Version %in% c("Parametric", "Nonparametric SS")) %>%
+  filter(Version %in% c("AIPW", "DML")) %>%
   ggplot(aes(
     x = interaction(n_aux, n_trial),
     y = rdhat,
@@ -120,7 +120,7 @@ ggsave("sim_figures/sim2/sim2_estimates.png",
 # summarize performance ---------------------------------------------------
 
 summary.table <- sim.res %>%
-  filter(Version %in% c("Parametric", "Nonparametric SS")) %>%
+  filter(Version %in% c("AIPW", "DML")) %>%
   select(seed, Version, Estimator, n_trial, n_aux, K,
          eta_0, eta_1, rd, rr,
          etahat_0, etahat_1, rdhat, rrhat,
