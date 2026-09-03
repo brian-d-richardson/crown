@@ -234,21 +234,13 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
   ## proposed AIPW with (incorrect) parametric models
   mu_fmla <- Y ~ A * (X1 + W1 + W2 + W3)
   pi_fmla <- Q ~ X1 + W1 + W2 + W3
-  aipw_par <- aipw_fit(
+  aipw <- aipw_fit(
     dat = dat,
     mu_fmla = mu_fmla,
     pi_fmla = pi_fmla)
 
-  ## proposed AIPW-NSS-1
-  aipw_nss1 <- aipw_fit_nss_v1(
-    dat = dat,
-    mu_covariates = c("X1", "W1", "W2", "W3"),
-    pi_covariates = c("X1", "W1", "W2", "W3"),
-    K = K,
-    method = "xgboost")
-
-  ## proposed AIPW-NSS-2
-  aipw_nss2 <- aipw_fit_nss_v2(
+  ## proposed DML
+  dml <- dml_fit(
     dat = dat,
     mu_covariates = c("X1", "W1", "W2", "W3"),
     pi_covariates = c("X1", "W1", "W2", "W3"),
@@ -275,14 +267,8 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
   ## make data frame with results
   res <- bind_rows(
 
-    extract_eta_info("aipw_par"),
-    extract_eta_info("aipw_nss1"),
-    extract_eta_info("aipw_nss2")) %>%
-
-    separate(
-      name,
-      into = c("est", "version"),
-      sep = "_") %>%
+    extract_eta_info("aipw"),
+    extract_eta_info("dml")) %>%
 
     mutate(
 
@@ -294,17 +280,11 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
         cov_01 * 2 * etahat_1 / (etahat_0^3),
 
       Estimator = factor(
-        est,
-        levels = c("aipw"),
-        labels = c("AIPW")),
-      Version = factor(
-        version,
-        levels = c("par", "nss1", "nss2"),
-        labels = c("Parametric",
-                   "Nonparametric SS 1",
-                   "Nonparametric SS 2"))) %>%
+        name,
+        levels = c("aipw", "dml"),
+        labels = c("AIPW", "DML"))) %>%
 
-    select(!c(est, version)) %>%
+    select(!c(name)) %>%
 
     mutate(
 
@@ -345,7 +325,7 @@ sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
                  linetype = "dashed",
                  color = "blue") +
 
-      facet_wrap(~ Version) +
+      facet_wrap(~ Estimator) +
       labs(y = expression(hat(RD)),
            x = NULL) +
       ggtitle("") +

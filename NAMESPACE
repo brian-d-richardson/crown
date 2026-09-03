@@ -2,8 +2,7 @@
 
 export(aipw_fit)
 export(aipw_fit_naive)
-export(aipw_fit_nss_v1)
-export(aipw_fit_nss_v2)
+export(dml_fit)
 export(get.sand.est)
 export(gfmla_fit)
 export(gfmla_fit_naive)
