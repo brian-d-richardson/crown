@@ -9,11 +9,11 @@ test_that("folds are stratified and reproducible", {
 test_that("each fold fits the four intended training samples", {
   calls <- list()
   local_mocked_bindings(
-    nonpar_est = function(x, y, method, arguments, wts = NULL) {
+    nonpar_est = function(x, y, arguments, wts = NULL) {
       calls[[length(calls) + 1L]] <<- as.integer(rownames(x))
       NULL
     },
-    nonpar_pred = function(mod, newdata, method) rep(.5, nrow(newdata))
+    nonpar_pred = function(mod, newdata) rep(.5, nrow(newdata))
   )
   fit <- dml_fit(example_data(), c("X", "W"), c("X", "W"))
   d <- fit$dat
@@ -70,11 +70,4 @@ test_that("DML does not use unavailable nonresponder covariates", {
   result <- dml_fit(d, c("X", "W"), c("X", "W"), arguments = list(nrounds = 3L))
   expect_true(all(is.finite(result$eta_hat)))
   expect_true(all(is.finite(result$eta_hat_cov)))
-})
-
-test_that("SuperLearner remains an optional DML learner", {
-  skip_if_not_installed("SuperLearner")
-  result <- dml_fit(example_data(), c("X", "W"), c("X", "W"), K = 2L,
-    method = "SuperLearner", arguments = list(SL.library = "SL.glm", cvControl = list(V = 2L)))
-  expect_true(all(is.finite(result$eta_hat)))
 })

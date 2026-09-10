@@ -2,7 +2,6 @@
 #'
 #' G-formula, IPW, and AIPW estimators combine trial outcomes with auxiliary
 #' covariates using logistic regression or cross-fitted machine learning.
-#' @importFrom SuperLearner SuperLearner
 #' @importFrom numDeriv jacobian
 #' @importFrom stats as.formula binomial coef cov glm model.frame model.matrix model.response plogis predict weighted.mean
 #' @importFrom utils tail
@@ -118,7 +117,7 @@ crown <- function(
     # Fit the selected cross-fitted estimator.
     if (version == "proposed") {
       dml <- dml_fit(
-        data, covariates, covariates, K, "xgboost", arguments, random_seed,
+        data, covariates, covariates, K, arguments, random_seed,
         estimator = estimator
       )
     } else {

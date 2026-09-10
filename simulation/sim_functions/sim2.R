@@ -97,7 +97,7 @@ run_sim2 <- function(
     )
     dml <- dml_fit(
       generated$data, covariates, covariates, K,
-      "xgboost", arguments, random_seed = grid$seed[i]
+      arguments, random_seed = grid$seed[i]
     )
 
     # Store risks, contrasts, and estimated variances.

@@ -20,13 +20,8 @@
 #'   predictor names, respectively; not formulas. Include relevant cluster
 #'   covariates; do not include `A`, `S`, `R`, `C`, `Y`, or `Q`.
 #' @param K Number of outer cross-fitting folds, at least two.
-#' @param method `"xgboost"` (default) or `"SuperLearner"`.
-#' @param arguments Optional named learner arguments. XGBoost uses its standard
-#'   defaults (100 boosting rounds); e.g.,
-#'   `list(nrounds = 100L, max_depth = 6L)`. SuperLearner requires
-#'   `SL.library` and `cvControl`, e.g.,
-#'   `list(SL.library = c("SL.glm", "SL.xgboost"), cvControl = list(V = 5L))`.
-#'   Inner SuperLearner CV is distinct from outer cross-fitting.
+#' @param arguments Optional XGBoost settings, e.g.,
+#'   `list(nrounds = 100L, max_depth = 6L)`.
 #' @param random_seed Seed set before splitting `S`-by-`A` stratified
 #'   individual-level folds and fitting the nuisance models.
 #' @param estimator `"aipw"` (default), `"gformula"`, or `"ipw"`.
@@ -49,11 +44,10 @@
 #' }
 #' @export
 dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
-                    method = "xgboost", arguments = NULL, random_seed = 1L,
+                    arguments = NULL, random_seed = 1L,
                     estimator = c("aipw", "gformula", "ipw")) {
 
   # Split individuals within each sample and treatment arm.
-  method <- match.arg(method, c("xgboost", "SuperLearner"))
   estimator <- match.arg(estimator)
   set.seed(random_seed)
   dat <- as.data.frame(dat)
@@ -85,18 +79,18 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     # Fit only the nuisance models required by the selected estimator.
     if (estimator != "ipw") {
       mu0 <- nonpar_est(
-        observed0[mu_covariates], observed0$Y, method, arguments
+        observed0[mu_covariates], observed0$Y, arguments
       )
       mu1 <- nonpar_est(
-        observed1[mu_covariates], observed1$Y, method, arguments
+        observed1[mu_covariates], observed1$Y, arguments
       )
     }
     if (estimator != "gformula") {
       Q0 <- nonpar_est(
-        selection0[pi_covariates], selection0$Q, method, arguments, selection0$wt
+        selection0[pi_covariates], selection0$Q, arguments, selection0$wt
       )
       Q1 <- nonpar_est(
-        selection1[pi_covariates], selection1$Q, method, arguments, selection1$wt
+        selection1[pi_covariates], selection1$Q, arguments, selection1$wt
       )
     }
 
@@ -107,18 +101,18 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     auxiliary <- test$S == 0
     if (estimator != "ipw") {
       test$muhat_0[predict_mu] <- nonpar_pred(
-        mu0, test[predict_mu, mu_covariates, drop = FALSE], method
+        mu0, test[predict_mu, mu_covariates, drop = FALSE]
       )
       test$muhat_1[predict_mu] <- nonpar_pred(
-        mu1, test[predict_mu, mu_covariates, drop = FALSE], method
+        mu1, test[predict_mu, mu_covariates, drop = FALSE]
       )
     }
     if (estimator != "gformula") {
       test$Q_prob[control] <- nonpar_pred(
-        Q0, test[control, pi_covariates, drop = FALSE], method
+        Q0, test[control, pi_covariates, drop = FALSE]
       )
       test$Q_prob[treated] <- nonpar_pred(
-        Q1, test[treated, pi_covariates, drop = FALSE], method
+        Q1, test[treated, pi_covariates, drop = FALSE]
       )
       test$pihat <- test$Q_prob / (1 - test$Q_prob)
     }

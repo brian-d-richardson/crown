@@ -44,18 +44,18 @@
     # Fit only the nuisance models required by the selected estimator.
     if (estimator != "ipw") {
       mu0 <- nonpar_est(training[observed0, covariates, drop = FALSE],
-                       training$Y[observed0], "xgboost", arguments)
+                       training$Y[observed0], arguments)
       mu1 <- nonpar_est(training[observed1, covariates, drop = FALSE],
-                       training$Y[observed1], "xgboost", arguments)
+                       training$Y[observed1], arguments)
     }
     if (estimator != "gformula") {
       censoring <- nonpar_est(training[covariates], training$C,
-                             "xgboost", arguments)
-      test$pihat <- 1 - nonpar_pred(censoring, test[covariates], "xgboost")
+                             arguments)
+      test$pihat <- 1 - nonpar_pred(censoring, test[covariates])
     }
     if (estimator != "ipw") {
-      test$muhat_0 <- nonpar_pred(mu0, test[covariates], "xgboost")
-      test$muhat_1 <- nonpar_pred(mu1, test[covariates], "xgboost")
+      test$muhat_0 <- nonpar_pred(mu0, test[covariates])
+      test$muhat_1 <- nonpar_pred(mu1, test[covariates])
     }
 
     # Average predictions over responders, then add Hajek residual corrections.

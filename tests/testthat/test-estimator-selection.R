@@ -66,11 +66,11 @@ test_that("XGBoost G-formula and IPW match their own fold formulas", {
 test_that("XGBoost skips nuisance models not needed by the estimator", {
   calls <- 0L
   local_mocked_bindings(
-    nonpar_est = function(x, y, method, arguments, wts = NULL) {
+    nonpar_est = function(x, y, arguments, wts = NULL) {
       calls <<- calls + 1L
       NULL
     },
-    nonpar_pred = function(mod, newdata, method) rep(.5, nrow(newdata))
+    nonpar_pred = function(mod, newdata) rep(.5, nrow(newdata))
   )
   d <- example_data()
   for (version in c("naive", "proposed")) {

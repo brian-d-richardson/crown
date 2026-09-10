@@ -6,16 +6,16 @@ effects on the risk-difference and risk-ratio scales.
 
 ## Installation
 
-From the folder containing `DESCRIPTION`:
+Install the current version from GitHub:
 
 ```r
-install.packages(c("xgboost", "SuperLearner", "numDeriv"))
-install.packages(".", repos = NULL, type = "source")
+install.packages("remotes")
+library(remotes)
+install_github("brian-d-richardson/crown", ref = "crown-1.0.0")
 library(crown)
 ```
 
-The package requires R >= 4.1 and XGBoost >= 3.2.0. The source code is in the
-[PopART repository](https://github.com/zhitanhe21/PopART).
+The required packages are installed automatically. `crown` requires R >= 4.1.
 
 ## Quick start
 

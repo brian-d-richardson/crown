@@ -8,13 +8,12 @@ Authors@R: c(
 Description: Estimates population mean potential outcomes and population-average
     causal effects using trial and auxiliary data. Provides parametric G-formula,
     inverse probability weighting, augmented inverse probability weighting, and
-    cross-fitted double machine learning with XGBoost or SuperLearner nuisance
-    regressions.
+    cross-fitted estimation with XGBoost nuisance regressions.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Depends: R (>= 4.1.0)
-Imports: numDeriv, stats, SuperLearner, utils, xgboost (>= 3.2.0)
+Imports: numDeriv, stats, utils, xgboost (>= 3.2.0)
 Suggests: dplyr, ggh4x, ggplot2, legendry,
     testthat (>= 3.0.0), tidyr
 Config/testthat/edition: 3

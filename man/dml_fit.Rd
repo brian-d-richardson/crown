@@ -9,7 +9,6 @@ dml_fit(
   mu_covariates,
   pi_covariates,
   K = 5L,
-  method = "xgboost",
   arguments = NULL,
   random_seed = 1L,
   estimator = c("aipw", "gformula", "ipw")
@@ -35,14 +34,8 @@ covariates; do not include \code{A}, \code{S}, \code{R}, \code{C}, \code{Y}, or 
 
 \item{K}{Number of outer cross-fitting folds, at least two.}
 
-\item{method}{\code{"xgboost"} (default) or \code{"SuperLearner"}.}
-
-\item{arguments}{Optional named learner arguments. XGBoost uses its standard
-defaults (100 boosting rounds); e.g.,
-\code{list(nrounds = 100L, max_depth = 6L)}. SuperLearner requires
-\code{SL.library} and \code{cvControl}, e.g.,
-\code{list(SL.library = c("SL.glm", "SL.xgboost"), cvControl = list(V = 5L))}.
-Inner SuperLearner CV is distinct from outer cross-fitting.}
+\item{arguments}{Optional XGBoost settings, e.g.,
+\code{list(nrounds = 100L, max_depth = 6L)}.}
 
 \item{random_seed}{Seed set before splitting \code{S}-by-\code{A} stratified
 individual-level folds and fitting the nuisance models.}
