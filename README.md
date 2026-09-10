@@ -61,9 +61,6 @@ summary(fit)
 | `RD` | 0.132 | 0.007 | [0.118, 0.147] |
 | `RR` | 1.486 | 0.033 | [1.422, 1.550] |
 
-This run took 5.50 seconds with R 4.5.2 and XGBoost 3.2.1.1.
-These are results from one synthetic dataset, not Monte Carlo averages.
-
 ## Choose the analysis
 
 The main choices are made directly in `crown()`:
