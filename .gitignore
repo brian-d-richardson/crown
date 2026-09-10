@@ -1,1 +1,9 @@
-.Rproj.user
+*.Rcheck/
+*.tar.gz
+.Rproj.user/
+.Rhistory
+simulation/results/
+simulation/sim_data/
+simulation/sim_figures/sim1/
+simulation/sim_figures/sim2/
+IMPLEMENTATION.md

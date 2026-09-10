@@ -1,343 +1,141 @@
-###############################################################################
-###############################################################################
+# Simulation 2: parametric AIPW and cross-fitted DML -------------------------
 
-# Simulation 2 Function: nonparametric sample splitting
+# Generate one trial and one auxiliary sample from the nonlinear DGP.
+generate_sim2_data <- function(
+    n_clusters, n_trial, n_auxiliary, p_response, p_censoring, seed) {
 
-# Brian Richardson
-
-# 2026-08-24
-
-###############################################################################
-###############################################################################
-
-
-sim2_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
-                     K, seed, sl_library, cvControl, run.checks = F) {
-
-  # (for code checking only) ------------------------------------------------
-
-  if (FALSE) {
-
-    ## clear workspace
-    rm(list = ls())
-
-    ## load packages
-    library(dplyr)
-    library(tidyr)
-    library(xgboost)
-    #library(SuperLearner)
-    library(devtools)
-
-    ## set work directory
-    setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown")
-
-    ## load crown package
-    load_all()
-
-    ## number of clusters
-    m <- 20
-
-    ## trial sample size
-    n_trial <- 5000
-
-    ## auxiliary sample size
-    n_aux <- 5000
-
-    ## response rate
-    p_resp <- 0.5
-
-    ## censoring probability among responders
-    p_cens <- 0.3
-
-    ## seed for random number generation
-    seed <- 1
-
-    ## indicator for whether to run checks
-    run.checks <- T
-
-    ## probability of treatment assignment
-    pA <- 0.5
-
-    ## number of folds
-    K <- 5
-
-    ## covariates
-    mu_covariates <- c("X1", "W1", "W2", "W3")
-    pi_covariates <- c("X1", "W1", "W2", "W3")
-
-  }
-
-  # simulate data -----------------------------------------------------------
-
-  ## intercepts for R and C models (justified below)
-  R_int <- -1.417151
-  C_int <- -0.8532847
-  if (FALSE) {
-
-    ## simulate covariates once
-    set.seed(1)
-    n_large <- 1e6
-    A  <- rbinom(n_large, 1, 0.5)
-    W1 <- rbinom(n_large, 1, 0.5)
-    W2 <- rnorm(n_large)
-    W3 <- rnorm(n_large)
-
-    ## solve for R model intercept: 0.4546268
-    R_int <- uniroot(
-      f = function(ri) mean(plogis(
-        ri +  + 2*as.numeric(W2^2 < 1))) - p_resp,
-      interval = c(-10, 10))$root
-
-    ## solve for C model intercept: -1.015664
-    C_int <- uniroot(
-      f = function(ci) mean(plogis(
-        ci - 0.25*A + 0.25*W1)) - p_cens,
-      interval = c(-10, 10))$root
-  }
-
-  ## possibly adjust trial and auxiliary sample sizes to be multiples of m
-  n_trial <- m * round(n_trial / m)
-  n_aux <- m * round(n_aux / m)
-
-  ## combined sample size
-  n_comb <- n_trial + n_aux
-
-  ## set seed
+  stopifnot(n_clusters == 20L, p_response == 0.5, p_censoring == 0.3)
+  n_trial <- n_clusters * round(n_trial / n_clusters)
+  n_auxiliary <- n_clusters * round(n_auxiliary / n_clusters)
   set.seed(seed)
 
-  ## cluster-level covariate generated once from N(0, 1)
-  XX1 <- c(0.92, 0.78, 0.07, -1.99, 0.62, -0.06, -0.16, -1.47, -0.48, 0.42,
-           1.36, -0.10, 0.39, -0.05, -1.38, -0.41, -0.39, -0.06, 1.10, 0.76)
+  cluster_risk <- c(
+    0.92, 0.78, 0.07, -1.99, 0.62, -0.06, -0.16, -1.47, -0.48, 0.42,
+    1.36, -0.10, 0.39, -0.05, -1.38, -0.41, -0.39, -0.06, 1.10, 0.76
+  )
+  treatment_by_cluster <- sample(rep(c(0, 1), n_clusters / 2))
+  response_intercept <- -1.417151
+  censoring_intercept <- -0.8532847
 
-  ## cluster-level randomization
-  AA <- sample(rep(c(0, 1), times = m / 2), replace = F)
+  cluster <- rep(seq_len(n_clusters), length.out = n_trial)
+  A <- treatment_by_cluster[cluster]
+  X1 <- cluster_risk[cluster]
+  W1 <- rbinom(n_trial, 1, 0.5)
+  W2 <- rnorm(n_trial)
+  W3 <- rnorm(n_trial)
+  R <- rbinom(
+    n_trial, 1,
+    plogis(response_intercept + 2 * (W2^2 < 1))
+  )
+  C <- rbinom(
+    n_trial, 1,
+    plogis(censoring_intercept - 0.25 * A + 0.25 * W1)
+  )
+  C[R == 0L] <- 0L
+  mu0 <- ifelse(W2^2 < 1, 0.9, plogis(0.25 * sin(pi * W3 / 4)))
+  mu1 <- ifelse(W2^2 < 1, 0.1, plogis(0.25 * sin(pi * W3 / 4)))
+  Y0 <- rbinom(n_trial, 1, mu0)
+  Y1 <- rbinom(n_trial, 1, mu1)
+  Y <- (1 - A) * Y0 + A * Y1
+  Y[R == 0L | C == 1L] <- 0L
 
-  ## simulate trial data
-  trial_dat <- data.frame(
-    id = 1:n_trial) %>%
-    mutate(
+  trial <- data.frame(
+    id = seq_len(n_trial), cluster, X1, W1, W2, W3, A, R, C, Y, wt = 1,
+    S = 1L
+  )
 
-      ## cluster assignment
-      clust = rep(1:m, length = n_trial),
+  cluster <- rep(seq_len(n_clusters), length.out = n_auxiliary)
+  W1 <- rbinom(n_auxiliary, 1, 0.75)
+  auxiliary <- data.frame(
+    id = n_trial + seq_len(n_auxiliary),
+    cluster,
+    X1 = cluster_risk[cluster],
+    W1,
+    W2 = rnorm(n_auxiliary),
+    W3 = rnorm(n_auxiliary),
+    A = treatment_by_cluster[cluster],
+    R = 0L,
+    C = 0L,
+    Y = 0L,
+    wt = ifelse(W1 == 0L, 0.75, 0.25),
+    S = 0L
+  )
+  auxiliary$wt <- auxiliary$wt / mean(auxiliary$wt)
 
-      ## one cluster-level covariate
-      X1 = XX1[clust],
-
-      ## arm assigned based on cluster randomization
-      A = AA[clust],
-
-      ## one binary covariate
-      W1 = rbinom(n_trial, 1, 0.5),
-
-      ## two normal covariates
-      W2 = rnorm(n_trial, 0, 1),
-      W3 = rnorm(n_trial, 0, 1),
-
-      ## response indicator
-      pR = plogis(R_int + 2*as.numeric(W2^2 < 1)),
-      R = rbinom(n_trial, 1, pR),
-
-      ## censoring indicator
-      pC = plogis(C_int - 0.25*A + 0.25*W1),
-      C = rbinom(n_trial, 1, pC),
-      C = ifelse(R == 1, C, 0),
-
-      ## potential outcomes
-      mu0 = ifelse(W2^2 < 1, 0.9, plogis(0.25*sin(pi*W3/4))),
-      mu1 = ifelse(W2^2 < 1, 0.1, plogis(0.25*sin(pi*W3/4))),
-      Y0 = rbinom(n_trial, 1, mu0),
-      Y1 = rbinom(n_trial, 1, mu1),
-
-      ## outcome
-      Y = (1 - A)*Y0 + A*Y1,
-      Y = ifelse(R == 1 & C == 0, Y, 0),
-
-      ## survey weight of 1 for trial data
-      wt = 1)
-
-  ## simulate auxiliary sample
-  aux_dat <- data.frame(
-    id = 1:n_aux + n_trial) %>%
-    mutate(
-
-      ## cluster assignment
-      clust = rep(1:m, length = n_aux),
-
-      ## one cluster-level covariate
-      X1 = XX1[clust],
-
-      ## arm assigned based on cluster randomization
-      A = AA[clust],
-
-      ## one binary covariate: W1 = 1 over-represented
-      W1 = rbinom(n_aux, 1, 0.75),
-
-      ## two normal covariates
-      W2 = rnorm(n_aux, 0, 1),
-      W3 = rnorm(n_aux, 0, 1),
-
-      ## survey weights to reflect over-representation of W_1
-      wt = ifelse(W1 == 0, 0.75, 0.25),
-
-      ## missing response, censoring indicator, and outcome
-      R = 0,
-      C = 0,
-      Y = 0)
-  aux_dat$wt <- aux_dat$wt / mean(aux_dat$wt)
-
-  ## combined data
-  dat <- bind_rows(
-    trial_dat %>% select(!c(pR, pC, mu0, mu1, Y0, Y1)) %>% mutate(S = 1),
-    aux_dat %>% mutate(S = 0))
-
-  ## potential outcome means
-  eta0 <- mean(trial_dat$mu0)
-  eta1 <- mean(trial_dat$mu1)
-
-  # check simulated data ----------------------------------------------------
-
-  if (run.checks) {
-
-    ## check response rate
-    print(mean(trial_dat$R)); print(p_resp)
-    trial_dat %>% group_by(W2^2 < 1) %>% summarise(p_resp = mean(R)) %>% print()
-    plot(trial_dat$W2, trial_dat$pR)
-    plot(trial_dat$W3, trial_dat$pR)
-
-    ## check censoring rate
-    trial_dat %>% filter(R == 1) %>% group_by(A, W1) %>%
-      summarise(p_cens = mean(C)) %>% print()
-    trial_dat %>% filter(R == 1) %>%
-      summarise(p_cens = mean(C)) %>% print()
-    print(p_cens)
-    plot(trial_dat$W2, trial_dat$pC)
-    plot(trial_dat$W3, trial_dat$pC)
-
-    ## check mean potential outcomes in population
-    print(eta0); print(eta1); print(eta1 - eta0)
-    trial_dat %>% group_by(W2^2 < 1) %>% summarise(
-      eta0 = mean(Y0), eta1 = mean(Y1)) %>%
-      mutate(rd = eta1 - eta0) %>%
-      print()
-    plot(trial_dat$W2, trial_dat$mu0)
-    plot(trial_dat$W2, trial_dat$mu1)
-    plot(trial_dat$W3, trial_dat$mu0)
-    plot(trial_dat$W3, trial_dat$mu1)
-
-    ## check mean potential outcomes among responders
-    print(c(eta0, eta1))
-    trial_dat %>% filter(R == 1) %>% summarise(m0 = mean(Y0), m1 = mean(Y1))
-  }
-
-  # analyze data ------------------------------------------------------------
-
-  ## proposed AIPW with (incorrect) parametric models
-  mu_fmla <- Y ~ A * (X1 + W1 + W2 + W3)
-  pi_fmla <- Q ~ X1 + W1 + W2 + W3
-  aipw <- aipw_fit(
-    dat = dat,
-    mu_fmla = mu_fmla,
-    pi_fmla = pi_fmla)
-
-  ## proposed DML
-  dml <- dml_fit(
-    dat = dat,
-    mu_covariates = c("X1", "W1", "W2", "W3"),
-    pi_covariates = c("X1", "W1", "W2", "W3"),
-    K = K,
-    method = "xgboost")
-
-  # combine results ---------------------------------------------------------
-
-  ## helper function to format results
-  extract_eta_info <- function(name) {
-
-    obj <- get(name)
-
-    data.frame(
-      etahat_0 = obj$eta_hat[1],
-      etahat_1 = obj$eta_hat[2],
-      cov_00 = obj$eta_hat_cov[1, 1],
-      cov_01 = obj$eta_hat_cov[1, 2],
-      cov_11 = obj$eta_hat_cov[2, 2],
-      name = name,
-      stringsAsFactors = FALSE)
-  }
-
-  ## make data frame with results
-  res <- bind_rows(
-
-    extract_eta_info("aipw"),
-    extract_eta_info("dml")) %>%
-
-    mutate(
-
-      rdhat = etahat_1 - etahat_0,
-      rrhat = etahat_1 / etahat_0,
-      var_rd = cov_11 + cov_00 - 2*cov_01,
-      var_rr = (cov_11 / (etahat_0^2)) +
-        (cov_00 * (etahat_1^2) / (etahat_0^4)) -
-        cov_01 * 2 * etahat_1 / (etahat_0^3),
-
-      Estimator = factor(
-        name,
-        levels = c("aipw", "dml"),
-        labels = c("AIPW", "DML"))) %>%
-
-    select(!c(name)) %>%
-
-    mutate(
-
-      # true etas
-      eta_0 = eta0,
-      eta_1 = eta1,
-
-      # true risk differences and ratios
-      rd = eta_1 - eta_0,
-      rr = eta_1 / eta_0,
-
-      # simulation settings
-      seed = seed,
-      m = m,
-      n_trial = n_trial,
-      n_aux = n_aux,
-      p_resp = p_resp,
-      p_cens = p_cens,
-      K = K)
-
-  # Plot Results ------------------------------------------------------------
-
-  if (run.checks) {
-
-    ## plot risk differences
-    library(ggplot2)
-    res %>%
-      mutate(rd_lower = rdhat - qnorm(0.975) * sqrt(var_rd),
-             rd_upper = rdhat + qnorm(0.975) * sqrt(var_rd)) %>%
-    ggplot(aes(x = Estimator,
-               y = rdhat,
-               ymin = rd_lower,
-               ymax = rd_upper)) +
-
-      geom_point() +
-      geom_linerange() +
-      geom_hline(aes(yintercept = rd),
-                 linetype = "dashed",
-                 color = "blue") +
-
-      facet_wrap(~ Estimator) +
-      labs(y = expression(hat(RD)),
-           x = NULL) +
-      ggtitle("") +
-      theme_bw() +
-      theme(panel.grid.minor = element_blank(),
-            strip.text = element_text(face = "bold"),
-            legend.position = "none")
-  }
-
-  # return results ----------------------------------------------------------
-
-  return(res)
+  list(
+    data = rbind(trial, auxiliary),
+    truth = c(eta0 = mean(mu0), eta1 = mean(mu1)),
+    n_trial = n_trial,
+    n_auxiliary = n_auxiliary
+  )
 }
 
+# Run the Monte Carlo replicates.
+run_sim2 <- function(
+    sample_sizes, run_id, out_dir, mc_reps = 20L, base_seed = 91000000L,
+    K = 5L, arguments = NULL) {
 
+  # Monte Carlo settings.
+  grid <- sample_sizes[rep(seq_len(nrow(sample_sizes)), mc_reps), ]
+  grid$replicate <- rep(seq_len(mc_reps), each = nrow(sample_sizes))
+  grid$seed <- base_seed + seq_len(nrow(grid))
+  covariates <- c("X1", "W1", "W2", "W3")
+  results <- data.frame()
+  started_at <- proc.time()[["elapsed"]]
+
+  for (i in seq_len(nrow(grid))) {
+
+    # Generate one trial and one auxiliary sample.
+    generated <- generate_sim2_data(
+      20L, grid$n_trial[i], grid$n_auxiliary[i], 0.5, 0.3, grid$seed[i]
+    )
+
+    # Fit parametric AIPW and cross-fitted DML.
+    aipw <- fit_aipw(
+      generated$data, Y ~ A * (X1 + W1 + W2 + W3),
+      Q ~ X1 + W1 + W2 + W3, "proposed"
+    )
+    dml <- dml_fit(
+      generated$data, covariates, covariates, K,
+      "xgboost", arguments, random_seed = grid$seed[i]
+    )
+
+    # Store risks, contrasts, and estimated variances.
+    result <- rbind(
+      aipw, .eta_result(dml$eta_hat[1], dml$eta_hat[2], dml$eta_hat_cov)
+    )
+    result$Estimator <- c("AIPW", "DML")
+    result$Version <- "Proposed"
+    result$rdhat <- result$etahat_1 - result$etahat_0
+    result$rrhat <- result$etahat_1 / result$etahat_0
+    result$var_rd <- result$cov_00 + result$cov_11 - 2 * result$cov_01
+    result$var_rr <- result$cov_11 / result$etahat_0^2 +
+      result$cov_00 * result$etahat_1^2 / result$etahat_0^4 -
+      2 * result$cov_01 * result$etahat_1 / result$etahat_0^3
+
+    result$eta_0 <- generated$truth[1]
+    result$eta_1 <- generated$truth[2]
+    result$rd <- generated$truth[2] - generated$truth[1]
+    result$rr <- generated$truth[2] / generated$truth[1]
+    result$seed <- grid$seed[i]
+    result$n_trial <- grid$n_trial[i]
+    result$n_aux <- grid$n_auxiliary[i]
+    result$K <- K
+    result$run_id <- run_id
+    result$replicate <- grid$replicate[i]
+    results <- rbind(results, result)
+    cat("Completed", i, "of", nrow(grid), "replicates\n")
+  }
+
+  # Save results and total running time.
+  elapsed <- proc.time()[["elapsed"]] - started_at
+  rownames(results) <- NULL
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  result_file <- file.path(out_dir, paste0("monte_carlo_", run_id, "_results.csv"))
+  write.csv(results, result_file, row.names = FALSE)
+  timing <- data.frame(mc_reps, combinations = nrow(sample_sizes), K,
+                       elapsed_seconds = elapsed)
+  write.csv(timing, file.path(out_dir, paste0(run_id, "_timing.csv")), row.names = FALSE)
+  cat("Finished in", round(elapsed, 1), "seconds\n")
+  invisible(list(results = results, result_file = result_file, elapsed = elapsed))
+}

@@ -1,393 +1,142 @@
-#' Naive IPW estimator
+# Parametric IPW ------------------------------------------------------------
+
+#' Fit a parametric IPW estimator
 #'
-#' estimate eta(0) and eta(1) using a naive IPW estimator, i.e., ignoring
-#' nonresponse
+#' Fits either the naive or proposed parametric inverse-probability weighted
+#' estimator for the two mean potential outcomes.
 #'
-#' @param dat data frame containing the following columns:
-#' \itemize{
-#' \item `C`: a binary indicator for whether the outcome is censored (`C`=1) or
-#' not (`C`=0)
-#' \item `A`: a binary exposure
-#' \item `Y`: a binary outcome
-#' \item other covariates specified in `mu_fmla`
-#' \item `wt`: survey weights
-#' }
-#'
-#' @param C_fmla a formula for the censoring mechanism regression model using
-#' variables in `dat`
-#'
-#' @param pA an optional number in (0, 1), the marginal probability of
-#' treatment (A = 1), default is 0.5.
-#'
-#' @return a list containing the following:
-#' \itemize{
-#' \item `eta_hat`: a numeric vector estimated mean potential outcomes eta(0)
-#' and eta(1)
-#' \item `eta_hat_cov`: a numeric matrix, estimated covariance of `eta_hat`
-#' \item `censor_reg`: a list, results of censoring regression model
-#' \item `dat`: a data frame including a column for propensity score weights
-#' }
-#'
+#' @param data Combined data containing `S`, `R`, `C`, `A`, `Y`, `wt`, and the
+#'   variables in `weight_formula`.
+#' @param weight_formula A logistic formula for censoring `C` (naive) or
+#'   selection `Q = S * R * (1 - C)` (proposed). The proposed model compares
+#'   uncensored trial responders in each treatment arm with the auxiliary sample.
+#' @param version `"naive"` or `"proposed"`.
+#' @return Estimated risks and their covariance entries.
 #' @export
-ipw_fit_naive <- function(dat, C_fmla, pA = 0.5) {
+fit_ipw <- function(
+    data, weight_formula, version = c("naive", "proposed")) {
+  version <- match.arg(version)
+  if (version == "naive") {
+    data <- data[data$S == 1L & data$R == 1L, ]
+    return(.fit_ipw_naive(data, weight_formula))
+  }
+  .fit_ipw_proposed(data, weight_formula)
+}
+#' Fit the naive IPW calculation
+#'
+#' Fits the censoring model and treatment-specific Hajek estimates.
+#' @param data Trial-responder data.
+#' @param censoring_formula A logistic censoring-model formula.
+#' @return Estimated risks and their covariance entries.
+#' @keywords internal
+#' @noRd
+.fit_ipw_naive <- function(data, censoring_formula) {
+  # Censoring probabilities.
+  censoring_fit <- glm(
+    censoring_formula, family = binomial(), data = data
+  )
+  design <- model.matrix(censoring_formula, data)
+  pi_c <- 1 - predict(censoring_fit, data, type = "response")
+  observed0 <- data$C == 0L & data$A == 0L
+  observed1 <- data$C == 0L & data$A == 1L
 
+  # Hajek estimates.
+  denominator0 <- sum(1 / pi_c[observed0])
+  denominator1 <- sum(1 / pi_c[observed1])
+  eta0 <- sum(data$Y[observed0] / pi_c[observed0]) / denominator0
+  eta1 <- sum(data$Y[observed1] / pi_c[observed1]) / denominator1
 
-  # check input -------------------------------------------------------------
-
-  ## required columns present
-  stopifnot(
-    "dat must contain columns C, A, Y, wt" =
-      all(c("C", "A", "Y") %in% names(dat)))
-
-  ## required columns are binary (0/1)
-  stopifnot(
-    "C must be binary (0/1)" = all(dat$C %in% c(0, 1)),
-    "A must be binary (0/1)" = all(dat$A %in% c(0, 1)),
-    "Y must be binary (0/1)" = all(dat$Y %in% c(0, 1)))
-
-
-  # censoring model ---------------------------------------------------------
-
-  ## logistic regression model for censoring mechanism
-  censor_reg <- glm(
-    formula = C_fmla,
-    family = "binomial",
-    data = dat,
-    weights = wt)
-
-  ## predicted values from censoring model
-  dat$piC <-
-    1 - predict(
-      censor_reg,
-      newdata = dat,
-      type = "response")
-
-  ## treatment assignment probabilities
-  dat$piA <- ifelse(dat$A == 1, pA, 1 - pA)
-
-
-  # IPW estimator -----------------------------------------------------------
-
-  ## joint probabilities of being uncensored and having treatment A
-  dat$pihat <- dat$piC * dat$piA
-
-  ## Hajek estimator of trial sample sizes by A
-  n_trial_hat <- dat %>%
-    filter(C == 0) %>%
-    mutate(
-      term_0 = (1 - A) / pihat,
-      term_1 = A / pihat) %>%
-    summarise(
-      nhat_0 = sum(term_0),
-      nhat_1 = sum(term_1)) %>%
-    unlist()
-
-  ## IPW estimator
-  etahat <- dat %>%
-    mutate(
-      term_0 = ifelse(C == 0,
-                      (1 - A) * Y / pihat,
-                      0),
-      term_1 = ifelse(C == 0,
-                      A * Y / pihat,
-                      0)) %>%
-    summarise(
-      etahat_0 = sum(term_0) / n_trial_hat[1],
-      etahat_1 = sum(term_1) / n_trial_hat[2])
-
-
-  # variance estimator ------------------------------------------------------
-
-  ## design matrix for variance estimation
-  X_cens <- model.matrix(censor_reg, data = dat)
-
-  ## variance estimator
-  est_var <- get.sand.est(
-    param = c(etahat$etahat_0, etahat$etahat_1,
-              n_trial_hat,
-              coef(censor_reg)),
-    n = nrow(dat),
-    get.psi = function(xx) {
-
-      ## extract pieces of combined parameter
-      eh0 <- xx[1]
-      eh1 <- xx[2]
-      nh0 <- xx[3]
-      nh1 <- xx[4]
-      bb_cens <- xx[4 + 1:length(coef(censor_reg))]
-
-      ## re-create weights using supplied parameter
-      piC_ <- 1 - plogis(as.vector(X_cens %*% bb_cens))
-      pihat_ <- piC_ * ifelse(dat$A == 1, pA, 1 - pA)
-
-      ## stacked estimating function
+  # Sandwich covariance.
+  covariance <- .sandwich_covariance(
+    c(eta0, eta1, denominator0, denominator1, coef(censoring_fit)),
+    function(value) {
+      beta <- value[-seq_len(4)]
+      pi_c_value <- 1 - plogis(as.vector(design %*% beta))
       cbind(
-
-        ## censoring regression estimating function
-        psi.lr(data = dat,
-               beta = bb_cens,
-               formula = C_fmla),
-
-        ## etahat estimating function
-        ifelse(
-          dat$C == 0 & dat$A == 0,
-          1 / pihat_,
-          0) - nh0,
-
-        ifelse(
-          dat$C == 0 & dat$A == 1,
-          1 / pihat_,
-          0) - nh1,
-
-        ## etahat estimating function
-        ifelse(
-          dat$C == 0 & dat$A == 0,
-          (nrow(dat) / nh0) * dat$Y / pihat_,
-          0) - eh0,
-
-        ifelse(
-          dat$C == 0 & dat$A == 1,
-          (nrow(dat) / nh1) * dat$Y / pihat_,
-          0) - eh1)
-    }
+        .logistic_score(data, beta, censoring_formula),
+        ifelse(observed0, 1 / pi_c_value, 0) - value[3] / nrow(data),
+        ifelse(observed1, 1 / pi_c_value, 0) - value[4] / nrow(data),
+        ifelse(observed0, nrow(data) * data$Y / pi_c_value / value[3], 0) - value[1],
+        ifelse(observed1, nrow(data) * data$Y / pi_c_value / value[4], 0) - value[2]
+      )
+    },
+    nrow(data)
   )
 
-
-  # return list of results --------------------------------------------------
-
-  res <- list(
-
-    ## causal parameter estimate
-    eta_hat = c("etahat_0" = etahat$etahat_0,
-                "etahat_1" = etahat$etahat_1),
-
-    ## estimated covariance of eta_hat
-    eta_hat_cov = est_var[1:2, 1:2],
-
-    ## censoring regression model results
-    censor_reg = censor_reg,
-
-    ## data set including estimated propensity score weights
-    dat = dat)
-
-
-  return(res)
-
+  .eta_result(eta0, eta1, covariance)
 }
 
-
-
-#' Crown IPW estimator
+#' Fit the proposed IPW calculation
 #'
-#' estimate eta(0) and eta(1) using a crown IPW estimator, i.e., accounting for
-#' nonresponse
-#'
-#' @param dat data frame containing the following columns:
-#' \itemize{
-#'\item `S`: a binary indicator for whether the observation belongs to the trial
-#'data (`S`=1) the auxiliary data (`S`=0)
-#' \item `R`: a binary indicator for whether the observation is a responder
-#' (`R`=1) or not (`R`=0)
-#' \item `C`: a binary indicator for whether the outcome is censored (`C`=1) or
-#' not (`C`=0)
-#' \item `A`: a binary exposure
-#' \item `Y`: a binary outcome
-#' \item other covariates specified in `mu_fmla`
-#' \item `wt`: survey weights
-#'
-#' }
-#' @param pi_fmla a formula for the propensity score regression model using
-#' variables in `dat`
-#'
-#' @return a list containing the following:
-#' \itemize{
-#' \item `eta_hat`: a numeric vector estimated mean potential outcomes eta(0)
-#' and eta(1)
-#' \item `eta_hat_cov`: a numeric matrix, estimated covariance of `eta_hat`
-#' \item `Q_reg_0`: a list, results of Q0 membership regression model
-#' \item `Q_reg_1`: a list, results of Q1 membership regression model
-#' \item `dat`: a data frame including a column for propensity score weights
-#' }
-#'
-#' @export
-ipw_fit <- function(dat, pi_fmla) {
+#' Fits arm-specific selection models and treatment-specific Hajek estimates.
+#' @param data Combined trial and auxiliary data.
+#' @param propensity_formula A logistic sample-membership formula.
+#' @return Estimated risks and their covariance entries.
+#' @keywords internal
+#' @noRd
+.fit_ipw_proposed <- function(data, propensity_formula) {
+  # Observed outcomes and auxiliary rows.
+  data$Q <- data$S * data$R * (1L - data$C)
+  restricted <- data$Q == 1L | data$S == 0L
+  fit0 <- restricted & (data$A == 0L | data$Q == 0L)
+  fit1 <- restricted & (data$A == 1L | data$Q == 0L)
+  data0 <- data[fit0, ]
+  data1 <- data[fit1, ]
 
+  # Arm-specific selection models.
+  propensity0 <- do.call(glm, list(
+    formula = propensity_formula, family = binomial(),
+    data = data0, weights = data0$wt
+  ))
+  propensity1 <- do.call(glm, list(
+    formula = propensity_formula, family = binomial(),
+    data = data1, weights = data1$wt
+  ))
+  design <- model.matrix(propensity_formula, data)
+  observed0 <- data$Q == 1L & data$A == 0L
+  observed1 <- data$Q == 1L & data$A == 1L
 
-  # check input -------------------------------------------------------------
+  # Selection odds.
+  probability <- rep(0, nrow(data))
+  probability[observed0] <- predict(propensity0, data[observed0, ], type = "response")
+  probability[observed1] <- predict(propensity1, data[observed1, ], type = "response")
+  odds <- probability / (1 - probability)
 
-  ## required columns present
-  stopifnot(
-    "dat must contain columns S, R, C, A, Y, wt" =
-      all(c("S", "R", "C", "A", "Y", "wt") %in% names(dat)))
+  # Hajek estimates.
+  denominator0 <- sum(1 / odds[observed0])
+  denominator1 <- sum(1 / odds[observed1])
+  eta0 <- sum(data$Y[observed0] / odds[observed0]) / denominator0
+  eta1 <- sum(data$Y[observed1] / odds[observed1]) / denominator1
+  length0 <- length(coef(propensity0))
 
-  ## required columns are binary (0/1)
-  stopifnot(
-    "S must be binary (0/1)" = all(dat$S %in% c(0, 1)),
-    "R must be binary (0/1)" = all(dat$R %in% c(0, 1)),
-    "C must be binary (0/1)" = all(dat$C %in% c(0, 1)),
-    "A must be binary (0/1)" = all(dat$A %in% c(0, 1)),
-    "Y must be binary (0/1)" = all(dat$Y %in% c(0, 1)))
-
-
-  # response model ----------------------------------------------------------
-
-  ## add Q labels to data
-  dat <- dat %>%
-    mutate(Q = S * R * (1 - C))
-
-  ## restrict sample to Q = 1 or S = 0
-  restricted_dat <- dat %>%
-    filter(Q == 1 | S == 0)
-
-  ## fit logistic regression models for Q membership in restricted data
-  Q_reg_0 <- glm(
-    formula = pi_fmla,
-    family = "binomial",
-    data = filter(restricted_dat, A == 0 | Q == 0),
-    weights = wt)
-
-  Q_reg_1 <- glm(
-    formula = pi_fmla,
-    family = "binomial",
-    data = filter(restricted_dat, A == 1 | Q == 0),
-    weights = wt)
-
-  ## estimated Q probabilities among uncensored responders
-  Q_ind <- dat$Q == 1
-  dat$Q_prob <- NA_real_
-  dat$Q_prob[Q_ind & dat$A == 0] <-
-    predict(
-      Q_reg_0,
-      newdata = dat[Q_ind & dat$A == 0,],
-      type = "response")
-
-  dat$Q_prob[Q_ind & dat$A == 1] <-
-    predict(
-      Q_reg_1,
-      newdata = dat[Q_ind & dat$A == 1,],
-      type = "response")
-
-  ## estimated propensity scores in trial data
-  dat$pihat <- NA_real_
-  dat$pihat[Q_ind] <- dat$Q_prob[Q_ind] /
-    (1 - dat$Q_prob[Q_ind])
-
-
-  # IPW estimator -----------------------------------------------------------
-
-  ## Hajek estimator of trial sample size by A
-  n_trial_hat <- dat %>%
-    filter(Q == 1) %>%
-    mutate(
-      term_0 = (1 - A) / pihat,
-      term_1 = A / pihat) %>%
-    summarise(
-      nhat_0 = sum(term_0),
-      nhat_1 = sum(term_1)) %>%
-    unlist()
-
-  ## IPW estimator
-  etahat <- dat %>%
-    mutate(
-      term_0 = ifelse(Q == 1,
-                      (1 - A) * Y / pihat,
-                      0),
-      term_1 = ifelse(Q == 1,
-                      A * Y / pihat,
-                      0)) %>%
-    summarise(
-      etahat_0 = sum(term_0) / n_trial_hat[1],
-      etahat_1 = sum(term_1) / n_trial_hat[2])
-
-
-  # variance estimator ------------------------------------------------------
-
-  ## design matrix for variance estimation
-  X_Q <- model.matrix(Q_reg_0, data = dat)
-
-  ## variance estimator
-  est_var <- get.sand.est(
-    param = c(etahat$etahat_0, etahat$etahat_1,
-              n_trial_hat,
-              coef(Q_reg_0), coef(Q_reg_1)),
-    n = nrow(dat),
-    get.psi = function(xx) {
-
-      ## extract pieces of combined parameter
-      eh0 <- xx[1]
-      eh1 <- xx[2]
-      nh0 <- xx[3]
-      nh1 <- xx[4]
-      bb_Q_0 <- xx[4 + 1:length(coef(Q_reg_0))]
-      bb_Q_1 <- tail(xx, length(coef(Q_reg_1)))
-
-      ## re-create weights using supplied parameter
-      Q_prob_ <- case_when(
-        dat$Q == 1 & dat$A == 0 ~
-         plogis(as.vector(X_Q %*% bb_Q_0)),
-        dat$Q == 1 & dat$A == 1 ~
-          plogis(as.vector(X_Q %*% bb_Q_1)),
-        .default = 0)
-      pihat_ <- Q_prob_ / (1 - Q_prob_)
-
-      ## stacked estimating function
+  # Sandwich covariance.
+  covariance <- .sandwich_covariance(
+    c(
+      eta0, eta1, denominator0, denominator1,
+      coef(propensity0), coef(propensity1)
+    ),
+    function(value) {
+      beta0 <- value[4 + seq_len(length0)]
+      beta1 <- tail(value, length(coef(propensity1)))
+      probability_value <- rep(0, nrow(data))
+      probability_value[observed0] <- plogis(
+        as.vector(design[observed0, , drop = FALSE] %*% beta0)
+      )
+      probability_value[observed1] <- plogis(
+        as.vector(design[observed1, , drop = FALSE] %*% beta1)
+      )
+      odds_value <- probability_value / (1 - probability_value)
       cbind(
-
-        ## propensity score regression estimating functions
-        psi.lr(data = dat,
-               beta = bb_Q_0,
-               formula = pi_fmla) *
-          as.numeric((dat$Q == 1 & dat$A == 0) | dat$S == 0),
-
-        psi.lr(data = dat,
-               beta = bb_Q_1,
-               formula = pi_fmla) *
-          as.numeric((dat$Q == 1 & dat$A == 1) | dat$S == 0),
-
-        ## n hat estimating function
-        ifelse(
-          dat$Q == 1 & dat$A == 0,
-          1 / pihat_,
-          0) - nh0,
-
-        ifelse(
-          dat$Q == 1 & dat$A == 1,
-          1 / pihat_,
-          0) - nh1,
-
-        ## eta hat estimating function
-        ifelse(
-          dat$Q == 1 & dat$A == 0,
-          (nrow(dat) / nh0) * dat$Y / pihat_,
-          0) - eh0,
-
-        ifelse(
-          dat$Q == 1 & dat$A == 1,
-          (nrow(dat) / nh1) * dat$Y / pihat_,
-          0) - eh1)
-    }
+        .logistic_score(data, beta0, propensity_formula) * fit0,
+        .logistic_score(data, beta1, propensity_formula) * fit1,
+        ifelse(observed0, 1 / odds_value, 0) - value[3] / nrow(data),
+        ifelse(observed1, 1 / odds_value, 0) - value[4] / nrow(data),
+        ifelse(observed0, nrow(data) * data$Y / odds_value / value[3], 0) - value[1],
+        ifelse(observed1, nrow(data) * data$Y / odds_value / value[4], 0) - value[2]
+      )
+    },
+    nrow(data)
   )
 
-
-  # return list of results --------------------------------------------------
-
-  res <- list(
-
-    ## causal parameter estimate
-    eta_hat = c("etahat_0" = etahat$etahat_0,
-                "etahat_1" = etahat$etahat_1),
-
-    ## estimated covariance of eta_hat
-    eta_hat_cov = est_var[1:2, 1:2],
-
-    ## Q membership regression model results
-    Q_reg_0 = Q_reg_0,
-    Q_reg_1 = Q_reg_1,
-
-    ## data set including estimated propensity score weights
-    dat = dat)
-
-  return(res)
-
+  .eta_result(eta0, eta1, covariance)
 }
-

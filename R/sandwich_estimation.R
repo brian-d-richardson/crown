@@ -1,26 +1,58 @@
-#' Sandwich variance estimator
-#'
-#' @param param a numeric vector, estimated parameters
-#' @param get.psi estimating function
-#' @param n a positive integer, the sample size
-#'
-#' @return estimated covariance matrix of param
-#'
-#' @export
-get.sand.est <- function(param, get.psi, n) {
+# Sandwich variance ---------------------------------------------------------
 
-  # D: empirical mean of derivative of Psi
-  D <- numDeriv::jacobian(
-    f = function(x) colSums(get.psi(x)),
-    x = param,
-    method = "simple") / -n
-  Dinv <- solve(D)
+#' Compute a sandwich covariance matrix
+#'
+#' Computes an empirical sandwich covariance matrix from a stacked estimating
+#' function.
+#'
+#' @param parameter A numeric vector containing the parameter estimates.
+#' @param estimating_function A function returning observation-level estimating
+#'   functions.
+#' @param n A positive integer giving the sample size.
+#'
+#' @return The estimated covariance matrix of \code{parameter}.
+#'
+#' @keywords internal
+#' @noRd
+.sandwich_covariance <- function(parameter, estimating_function, n) {
+  derivative <- jacobian(
+    function(value) colSums(estimating_function(value)),
+    parameter,
+    method = "simple"
+  ) / -n
+  psi <- estimating_function(parameter)
+  meat <- crossprod(psi) / n
+  inverse <- solve(derivative)
+  inverse %*% meat %*% t(inverse) / n
+}
 
-  # B: empirical mean of outer product of Psi
-  Psi <- get.psi(param)
-  Omega <- matrix(rowMeans(apply(Psi, 1, function(psi) psi %*% t(psi))),
-                  nrow = length(param))
 
-  # sandwich estimator
-  return(Dinv %*% Omega %*% t(Dinv) / n)
+#' Format potential-outcome means and covariance entries
+#'
+#' Combines two potential-outcome means and their covariance entries in the
+#' common estimator result format.
+#'
+#' @param eta0 A numeric value giving the estimated mean under control.
+#' @param eta1 A numeric value giving the estimated mean under treatment.
+#' @param covariance A covariance matrix whose first two rows and columns
+#'   correspond to \code{eta0} and \code{eta1}.
+#'
+#' @return A one-row data frame containing:
+#' \itemize{
+#'   \item{\code{etahat_0}: estimated mean under control;}
+#'   \item{\code{etahat_1}: estimated mean under treatment;}
+#'   \item{\code{cov_00} and \code{cov_11}: estimated variances;}
+#'   \item{\code{cov_01}: estimated covariance.}
+#' }
+#'
+#' @keywords internal
+#' @noRd
+.eta_result <- function(eta0, eta1, covariance) {
+  data.frame(
+    etahat_0 = eta0,
+    etahat_1 = eta1,
+    cov_00 = covariance[1, 1],
+    cov_01 = covariance[1, 2],
+    cov_11 = covariance[2, 2]
+  )
 }

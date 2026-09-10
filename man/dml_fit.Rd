@@ -2,47 +2,74 @@
 % Please edit documentation in R/dml_fit.R
 \name{dml_fit}
 \alias{dml_fit}
-\title{Crown DML estimator}
+\title{Proposed cross-fitted estimators}
 \usage{
-dml_fit(dat, mu_covariates, pi_covariates, K, method, arguments = NULL)
+dml_fit(
+  dat,
+  mu_covariates,
+  pi_covariates,
+  K = 5L,
+  method = "xgboost",
+  arguments = NULL,
+  random_seed = 1L,
+  estimator = c("aipw", "gformula", "ipw")
+)
 }
 \arguments{
-\item{dat}{data frame containing the following columns:
+\item{dat}{Combined data frame containing:
 \itemize{
-\item \code{S}: a binary indicator for whether the observation belongs to the trial
-data (\code{S}=1) the auxiliary data (\code{S}=0)
-\item \code{R}: a binary indicator for whether the observation is a responder
-(\code{R}=1) or not (\code{R}=0)
-\item \code{C}: a binary indicator for whether the outcome is censored (\code{C}=1) or
-not (\code{C}=0)
-\item \code{A}: a binary exposure
-\item \code{Y}: a binary outcome
-\item other covariates specified in \code{mu_fmla}
-\item \code{wt}: survey weights
-}}
+\item \code{S}: trial (1) or auxiliary (0);
+\item \code{A}: cluster treatment (0 or 1), in both samples;
+\item \code{R}: response indicator;
+\item \code{C}: censoring indicator (1 = censored);
+\item \code{Y}: binary outcome;
+\item \code{wt}: weight (1 for trial rows, positive sampling weights for auxiliary rows);
+\item the baseline covariates used in the nuisance models.
+}
+Use zero placeholders for unobserved \code{R}, \code{C}, and \code{Y}. Nonresponders'
+covariates may be missing because those rows are not used in nuisance fits.}
 
-\item{mu_covariates}{a formula for the outcome regression model using
-variables in \code{dat}}
+\item{mu_covariates, pi_covariates}{Character vectors of outcome and selection
+predictor names, respectively; not formulas. Include relevant cluster
+covariates; do not include \code{A}, \code{S}, \code{R}, \code{C}, \code{Y}, or \code{Q}.}
 
-\item{pi_covariates}{a formula for the propensity score regression model
-using variables in \code{dat}}
+\item{K}{Number of outer cross-fitting folds, at least two.}
 
-\item{K}{a positive integer number of folds for sample splitting}
+\item{method}{\code{"xgboost"} (default) or \code{"SuperLearner"}.}
 
-\item{method}{a character string, method of nonparametric estimator}
+\item{arguments}{Optional named learner arguments. XGBoost uses its standard
+defaults (100 boosting rounds); e.g.,
+\code{list(nrounds = 100L, max_depth = 6L)}. SuperLearner requires
+\code{SL.library} and \code{cvControl}, e.g.,
+\code{list(SL.library = c("SL.glm", "SL.xgboost"), cvControl = list(V = 5L))}.
+Inner SuperLearner CV is distinct from outer cross-fitting.}
 
-\item{arguments}{an optional list with arguments to pass to \code{nonpar_est}}
+\item{random_seed}{Seed set before splitting \code{S}-by-\code{A} stratified
+individual-level folds and fitting the nuisance models.}
+
+\item{estimator}{\code{"aipw"} (default), \code{"gformula"}, or \code{"ipw"}.}
 }
 \value{
-a list containing the following:
+A list containing:
 \itemize{
-\item \code{eta_hat}: a numeric vector estimated mean potential outcomes eta(0)
-and eta(1)
-\item \code{eta_hat_cov}: a numeric matrix, estimated covariance of \code{eta_hat}
-\item \code{dat}: a data frame with estimated propensity score weights
+\item \code{eta_hat}: risks under control and treatment;
+\item \code{eta_hat_cov}: their two-by-two covariance matrix (\code{NA} except AIPW);
+\item \code{fold_estimates}: risks and covariance entries for each fold;
+\item \code{dat}: input data plus folds, \code{Q}, out-of-fold outcome predictions,
+selection probabilities, and selection odds.
 }
 }
 \description{
-estimate eta(0) and eta(1) using a crown DML estimator, i.e., accounting for
-nonresponse, with nonparametric sample splitting
+The default AIPW estimator uses cross-fitted nuisance models.
+G-formula uses outcome regressions only; IPW uses selection regressions only.
+These two alternatives return point estimates without standard errors.
+}
+\details{
+Uses fold-specific Hajek normalization and the equal average of
+the fold estimates. Selection odds are \code{zeta / (1 - zeta)}. Covariance
+uses the mean of fold-level individual contribution covariances divided
+by the full observation count.
+For sampling weights, contribution scaling uses observation counts, not
+fold weight totals, so the estimate equals the weighted Hajek formula.
+No probability clipping or alternative learner is silently applied.
 }

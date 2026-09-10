@@ -1,3 +1,8 @@
+^simulation$
+^README\.Rmd$
+^\.gitignore$
+^IMPLEMENTATION\.md$
 ^crown\.Rproj$
 ^\.Rproj\.user$
-^LICENSE\.md$
+^\.Rhistory$
+^crown_demo.*\.Rmd$

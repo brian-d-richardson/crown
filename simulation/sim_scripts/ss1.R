@@ -1,96 +1,60 @@
-###############################################################################
-###############################################################################
+#!/usr/bin/env Rscript
 
-# PopART Simulation 1 Script
+# Simulation 1: parametric G-formula, IPW, and AIPW
 
-# Brian Richardson
+project_dir <- normalizePath(file.path(dirname(sys.frame(1)$ofile), "..", ".."))
+setwd(project_dir)
 
-# 2026-08-24
+# Packages
 
-###############################################################################
-###############################################################################
-
-# setup -------------------------------------------------------------------
-
-# clear workspace
-rm(list = ls())
-
-# load necessary packages
 library(dplyr)
 library(tidyr)
-library(devtools)
-library(pbapply)
+library(ggplot2)
+library(ggh4x)
+library(legendry)
+library(crown)
 
-# check if running on cluster (env variable is non-empty)
-env_task <- Sys.getenv("SLURM_ARRAY_TASK_ID")
-on.cluster <- env_task != ""
-if (on.cluster) {
-  cluster.id <- as.numeric(env_task)
-  setwd(dirname(getwd()))
-} else {
-  cluster.id <- 0
-  setwd("C:/Users/brich/OneDrive - University of North Carolina at Chapel Hill/Desktop/CIRL/PopART/crown")
-}
+# Functions
 
-# load crown and simulation functions
-load_all()
 source("simulation/sim_functions/sim1.R")
+source("simulation/sim_analysis/sim1_analysis.R")
 
-# simulation parameters ---------------------------------------------------
+# Settings
 
-## baseline seed (specific to cluster)
-base.seed <- 10^6 * as.integer(cluster.id)
+sample_sizes <- expand.grid(
+  n_trial = c(500L, 5000L),
+  n_auxiliary = c(500L, 5000L)
+)
+mc_reps <- 20L
+n_clusters <- 20L
+p_response <- 0.5
+p_censoring <- 0.3
+run_id <- "parametric_mc20"
+data_dir <- file.path(project_dir, "simulation", "sim_data", "sim1")
+figure_dir <- file.path(project_dir, "simulation", "sim_figures", "sim1")
 
-## fixed parameters
-m <- 20
-p_resp <- 0.5
-p_cens <- 0.3
+# Run
 
-## number of simulation replicates
-n.rep <- 2
+simulation <- run_sim1(
+  sample_sizes = sample_sizes,
+  run_id = run_id,
+  out_dir = data_dir,
+  n_clusters = n_clusters,
+  p_response = p_response,
+  p_censoring = p_censoring,
+  mc_reps = mc_reps
+)
 
-## simulation inputs
-sim.in <- expand.grid(
-  n_trial = c(500, 5000),
-  n_aux = c(500, 5000),
-  mu_correct = c(T, F),
-  pi_correct = c(T, F),
-  sim.id = 1:n.rep + base.seed)
+figures <- plot_sim1(
+  simulation$results,
+  run_id,
+  figure_dir
+)
 
-## test run one simulation
-if (FALSE) {
-  sim1_fun(
-    m = m,
-    n_trial = sim.in$n_trial[1],
-    n_aux = sim.in$n_aux[1],
-    mu_correct = sim.in$mu_correct[1],
-    pi_correct = sim.in$pi_correct[1],
-    p_resp = p_resp,
-    p_cens = p_cens,
-    seed = sim.in$sim.id[1])
-}
-
-# run simulations ---------------------------------------------------------
-
-## run simulations
-sim.out <- pblapply(
-  X = seq_len(nrow(sim.in)),
-  FUN = function(ii) {
-
-    sim1_fun(
-      m = m,
-      n_trial = sim.in$n_trial[ii],
-      n_aux = sim.in$n_aux[ii],
-      mu_correct = sim.in$mu_correct[ii],
-      pi_correct = sim.in$pi_correct[ii],
-      p_resp = p_resp,
-      p_cens = p_cens,
-      seed = sim.in$sim.id[ii])
-
-  }) %>%
-  bind_rows()
-
-## save results
-write.csv(sim.out, row.names = F,
-          paste0("simulation/sim_data/sim1/sd",
-                 as.integer(cluster.id), ".csv"))
+cat(
+  "\nCompleted", mc_reps, "Monte Carlo replicates for each of",
+  nrow(sample_sizes), "sample-size combinations\n"
+)
+cat("Results:", simulation$result_file, "\n")
+cat("Figures:\n")
+print(figures)

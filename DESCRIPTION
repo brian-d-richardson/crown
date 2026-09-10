@@ -1,10 +1,21 @@
 Package: crown
-Title: crown: cluster RCT outcome with nonresponse
-Version: 0.0.0.9000
-Authors@R: 
-    person("Brian", "Richardson", , "brichsont@ad.unc.edu", role = c("aut", "cre"))
-Description: Causal inference from a cluster RCT with individual-level differential nonresponse.
+Title: Cluster-Randomized Trial Analysis with Outcomes Weighted for Nonresponse
+Version: 1.0.0
+Authors@R: c(
+    person("Brian", "Richardson", email = "richabr@wfu.edu", role = "aut"),
+    person("zhitanhe", email = "zhitanhe@unc.edu", role = c("aut", "cre"))
+    )
+Description: Estimates population causal risks and contrasts using trial and
+    auxiliary data. Provides parametric G-formula, inverse probability weighting,
+    augmented inverse probability weighting, and cross-fitted double machine
+    learning with XGBoost or SuperLearner nuisance regressions.
 License: MIT + file LICENSE
 Encoding: UTF-8
+LazyData: true
+Depends: R (>= 4.1.0)
+Imports: numDeriv, stats, SuperLearner, utils, xgboost (>= 3.2.0)
+Suggests: dplyr, ggh4x, ggplot2, legendry,
+    testthat (>= 3.0.0), tidyr
+Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
-Config/roxygen2/version: 8.1.0
+RoxygenNote: 7.3.3

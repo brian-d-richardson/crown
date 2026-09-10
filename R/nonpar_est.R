@@ -1,91 +1,40 @@
-#' Nonparametric estimation wrapper
+#' Fit a binary nuisance regression
 #'
-#' estimate the conditional distribution of a binary outcome using either
-#' xgboost or SuperLearner
-#'
-#' @param x a numeric matrix of covariates
-#' @param y a binary vector of outcomes
-#'
-#' @param method either "xgboost" or "SuperLearner", method of nonparametric
-#' estimation
-#'
-#' @param arguments an optional list with arguments to pass to `nonpar_est`. If
-#' `method` is "SuperLearner", `arguments` must contain `SL.library` and
-#' `cvControl`
-#'
-#' @param wts an optional numeric vector of observation weights
-#'
-#' @return a fitted model
-#'
-#' @export
+#' @param x Predictor data frame.
+#' @param y Binary outcome vector.
+#' @param method Either `"xgboost"` or `"SuperLearner"`.
+#' @param arguments Optional learner settings; see [dml_fit()].
+#' @param wts Optional observation weights.
+#' @return A fitted XGBoost or SuperLearner model.
+#' @keywords internal
+#' @noRd
 nonpar_est <- function(x, y, method, arguments = NULL, wts = NULL) {
-
-  mod <- NULL
-
-  if (method == "SuperLearner") {
-
-    stopifnot(
-      "arguments must contain SL.library" = !is.null(arguments$SL.library),
-      "arguments must contain cvControl" = !is.null(arguments$cvControl))
-
-    mod <- SuperLearner::SuperLearner(
-      Y = y,
-      X = x,
-      family = binomial(),
-      obsWeights = wts,
-      SL.library = arguments$SL.library,
-      cvControl = arguments$cvControl)
-
-  } else if (method == "xgboost") {
-
-    mod <- xgboost::xgboost(
-      x = x,
-      y = as.factor(y),
-      objective = "binary:logistic",
-      weights = wts)
-
-  } else {
-    print("unrecognized method")
+  if (method == "xgboost") {
+    settings <- list(
+      x = x, y = factor(y, levels = 0:1),
+      objective = "binary:logistic", weights = wts
+    )
+    return(do.call(xgboost, c(settings, arguments)))
   }
-  return(mod)
+
+  SuperLearner(
+    Y = y, X = x, family = binomial(), obsWeights = wts,
+    SL.library = arguments$SL.library, cvControl = arguments$cvControl,
+    env = asNamespace("SuperLearner")
+  )
 }
 
-
-#' Nonparametric prediction wrapper
+#' Predict nuisance probabilities
 #'
-#' predict probabilites using a fitted model from xgboost or SuperLearner
-#'
-#' @param method either "xgboost" or "SuperLearner", method of nonparametric
-#' estimation
-#'
-#' @param mod a fitted model object, output of `nonpar_est`
-#'
-#' @param newdata a numeric matrix, predictors from new data
-#'
-#' @return a numeric vector, predicted probabilities
-#'
-#' @export
+#' @param mod Fitted nuisance model.
+#' @param newdata Predictor data frame for held-out observations.
+#' @param method Either `"xgboost"` or `"SuperLearner"`.
+#' @return A numeric vector of predicted probabilities.
+#' @keywords internal
+#' @noRd
 nonpar_pred <- function(mod, newdata, method) {
-
-  pred <- NULL
-
-  if (method == "SuperLearner") {
-
-    pred <- predict(
-      mod,
-      newdata = newdata,
-      onlySL = T)$pred
-
-  } else if (method == "xgboost") {
-
-    pred <- predict(
-      mod,
-      newdata = newdata)
-
-  } else {
-    stop("unrecognized method: must be 'xgboost' or 'SuperLearner'")
+  if (method == "xgboost") {
+    return(as.numeric(predict(mod, newdata = newdata)))
   }
-
-  return(pred)
-
+  as.numeric(predict(mod, newdata = newdata, onlySL = TRUE)$pred)
 }

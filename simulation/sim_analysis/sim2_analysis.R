@@ -1,241 +1,155 @@
-###############################################################################
-###############################################################################
+# Simulation 2 analysis and figures ---------------------------------------
 
-# PopART Simulation 2 Analysis
-
-# Brian Richardson
-
-# 2026-08-25
-
-###############################################################################
-###############################################################################
-
-# setup -------------------------------------------------------------------
-
-rm(list = ls())
-library(dplyr)
-library(tidyverse)
-library(ggplot2)
-library(ggh4x)
-library(scales)
-library(legendry)
-library(RColorBrewer)
-library(here)
-
-setwd(here())
-setwd("simulation")
-
-# load results ------------------------------------------------------------
-
-## load simulation results from each of 10 clusters
-sim.out.list <- lapply(
-  X = 0:9,
-  FUN = function(clust) {
-    cbind(clust,
-          read.csv(paste0("sim_data/sim2/sd",
-                          clust, ".csv")))
-  })
-
-
-## combine simulation results into 1 data frame
-sim.res <- bind_rows(sim.out.list)
-
-# format data -------------------------------------------------------------
-
-## define factor variables
-sim.res <- sim.res %>%
-  mutate(
-    Estimator = factor(Estimator,
-                       levels = c("AIPW")),
-    Version = factor(
-      Version,
-      levels = c("Parametric",
-                 "Nonparametric SS 1",
-                 "Nonparametric SS 2"),
-      labels = c("AIPW",
-                 "Nonparametric SS 1",
-                 "DML")),
-    Trial_Size = factor(n_trial),
-    Aux_Size = factor(n_aux),
-    Size = factor(paste0(n_trial, "_", n_aux)))
-
-## find true eta0, eta1, and effect size
-sim.res0 <- sim.res %>% filter(Version == "AIPW")
-ggplot(sim.res0, aes(x = eta_0)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
-ggplot(sim.res0, aes(x = eta_1)) + geom_histogram() + facet_wrap(~ Trial_Size, ncol = 1)
-eta_0 <- mean(sim.res0$eta_0)
-eta_1 <- mean(sim.res0$eta_1)
-print(round(c(eta_0, eta_1), 3))
-rd <- eta_1 - eta_0
-rr <- eta_1 / eta_0
-print(round(rd, 3))
-
-## number of simulations
-n.sim <- n_distinct(sim.res$seed)
-
-# check for errors --------------------------------------------------------
-
-sim.res %>%
-  group_by(Trial_Size, Aux_Size, K, Estimator, Version) %>%
-  summarise(n = n())
-
-
-# color palette -----------------------------------------------------------
-
-pal <- c("#FF6800", "#803E75", "#C10020", "#FFB300")
-
-# plot results ------------------------------------------------------------
-
-## plot RD estimates
-rd_plot <- sim.res %>%
-  filter(Version %in% c("AIPW", "DML")) %>%
-  ggplot(aes(
-    x = interaction(n_aux, n_trial),
-    y = rdhat,
-    color = Version,
-    fill = Version)) +
-  geom_boxplot(alpha = 0.5) +
-  geom_hline(yintercept = rd,
-             linetype = "dashed") +
-  facet_nested(~ Version) +
-  scale_color_manual(values = pal) +
-  scale_fill_manual(values = pal) +
-  labs(y = expression(hat(RD)),
-       x = "Auxiliary and Trial Sample Sizes") +
-  theme_bw() +
-  theme(panel.grid.minor = element_blank(),
-        panel.grid.major = element_blank(),
-        strip.text = element_text(face = "bold"),
-        legend.position = "none") +
-  guides(x = "axis_nested")
-
-rd_plot
-
-## save image
-ggsave("sim_figures/sim2/sim2_estimates.png",
-       dpi = 600, width = 5, height = 3)
-
-
-
-# summarize performance ---------------------------------------------------
-
-summary.table <- sim.res %>%
-  filter(Version %in% c("AIPW", "DML")) %>%
-  select(seed, Version, Estimator, n_trial, n_aux, K,
-         eta_0, eta_1, rd, rr,
-         etahat_0, etahat_1, rdhat, rrhat,
-         cov_00, cov_01, cov_11, var_rd, var_rr) %>%
-  rename(truth_eta0 = eta_0,
-         truth_eta1 = eta_1,
-         truth_rd = rd,
-         truth_rr = rr,
-         est_eta0 = etahat_0,
-         est_eta1 = etahat_1,
-         est_rd = rdhat,
-         est_rr = rrhat,
-         Var_eta0 = cov_00,
-         Var_eta1 = cov_11,
-         Var_rd = var_rd,
-         Var_rr = var_rr) %>%
-  select(!cov_01) %>%
-  pivot_longer(
+# Summarize and plot the simulation results.
+plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
+  summary <- select(results,
+    seed, Version, Estimator, n_trial, n_aux,
+    eta_0, eta_1, rd, rr, etahat_0, etahat_1, rdhat, rrhat,
+    cov_00, cov_11, var_rd, var_rr
+  )
+  summary <- rename(summary,
+    truth_eta0 = eta_0, truth_eta1 = eta_1,
+    truth_rd = rd, truth_rr = rr,
+    est_eta0 = etahat_0, est_eta1 = etahat_1,
+    est_rd = rdhat, est_rr = rrhat,
+    Var_eta0 = cov_00, Var_eta1 = cov_11,
+    Var_rd = var_rd, Var_rr = var_rr
+  )
+  summary <- pivot_longer(summary,
     cols = matches("^(truth|est|Var)_"),
-    names_to = c("type", "param"),
+    names_to = c("type", "parameter"),
     names_sep = "_",
-    values_to = "value") %>%
-  pivot_wider(
-    names_from = type,
-    values_from = value,
-    id_cols = c(seed, Version, Estimator, n_trial, n_aux, K, param)) %>%
-  mutate(ci_lower = est - qnorm(0.975) * sqrt(Var),
-         ci_upper = est + qnorm(0.975) * sqrt(Var)) %>%
-  group_by(Version, Estimator, n_trial, n_aux, K, param) %>%
-  summarise(
+    values_to = "value"
+  )
+  summary <- pivot_wider(summary, names_from = type, values_from = value)
+  summary <- mutate(summary,
+    lower = est - 1.96 * sqrt(Var),
+    upper = est + 1.96 * sqrt(Var)
+  )
+  summary <- group_by(summary, Version, Estimator, n_trial, n_aux, parameter)
+  summary <- summarise(summary,
+    empirical_variance = var(est),
+    estimated_variance = mean(Var),
     bias = mean(est - truth),
-    emp_var = var(est),
-    est_var = mean(Var),
     mse = mean((est - truth)^2),
-    ci_cov = mean(truth >= ci_lower & truth <= ci_upper)) %>%
-  mutate(Param = factor(param,
-                        levels = c("eta0", "eta1", "rd", "rr"),
-                        labels = c("eta(0)", "eta(1)", "RD", "RR")))
+    coverage = mean(truth >= lower & truth <= upper),
+    .groups = "drop"
+  )
+  summary <- mutate(summary, parameter = factor(
+    parameter,
+    levels = c("eta0", "eta1", "rd", "rr"),
+    labels = c("eta(0)", "eta(1)", "RD", "RR")
+  ))
 
-# plot variance results ---------------------------------------------------
+  sample_size <- function(auxiliary, trial, separator = ".") {
+    interaction(
+      factor(auxiliary, levels = sort(unique(auxiliary))),
+      factor(trial, levels = sort(unique(trial))),
+      sep = separator,
+      drop = TRUE
+    )
+  }
+  size_labels <- function(labels, separator) {
+    values <- strsplit(as.character(labels), separator, fixed = TRUE)
+    as.expression(lapply(values, function(value) {
+      bquote(n^aux == .(value[[1]]) * "," ~~ n^trial == .(value[[2]]))
+    }))
+  }
 
-var_plot <- summary.table %>%
-  mutate(n_both = factor(paste0(
-    "n^{aux}==", n_aux, "*','~~", "n^{trial}==", n_trial))) %>%
-  ggplot(
-    aes(x = emp_var,
-        y = est_var,
-        color = n_both,
-        shape = Param)) +
-  scale_x_continuous(transform = "log10",
-                     breaks = c(0.001, 0.01)) +
-  scale_y_continuous(transform = "log10",
-                     breaks = c(0.001, 0.01)) +
-  scale_color_manual(
-    values = pal,
-    labels = parse_format()) +
-  scale_shape_discrete(labels = parse_format()) +
-  geom_abline(linetype = "dashed") +
-  geom_point(size = 3) +
-  facet_nested(~ Version) +
-  labs(y = "Average Estimated Variance",
-       x = "Empirical Variance",
-       color = "Sample Size",
-       shape = "Parameter") +
-  guides(color = guide_legend(nrow = 2)) +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        strip.text = element_text(face = "bold"),
-        legend.position = "bottom",
-        legend.box = "vertical",
-        legend.spacing.y = unit(-5, "pt"))
+  results <- mutate(results,
+    Version = factor(Version, levels = c("Naive", "Proposed")),
+    Estimator = factor(Estimator, levels = c("AIPW", "DML")),
+    Sample_Size = sample_size(n_aux, n_trial)
+  )
+  colors <- c("#FF6800", "#803E75", "#C10020", "#FFB300")
 
-var_plot
+  estimate_plot <- ggplot(
+    results,
+    aes(x = Sample_Size, y = rdhat, color = Estimator, fill = Estimator)
+  ) +
+    geom_boxplot(alpha = 0.5) +
+    geom_hline(yintercept = mean(results$rd), linetype = "dashed") +
+    facet_grid(. ~ Estimator) +
+    scale_color_manual(values = colors) +
+    scale_fill_manual(values = colors) +
+    labs(
+      x = "Auxiliary and Trial Sample Sizes",
+      y = expression(hat(RD))
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "none"
+    ) +
+    guides(x = guide_axis_nested())
 
-## save image
-ggsave("sim_figures/sim2/sim2_variance.png",
-       dpi = 600, width = 5.8, height = 4)
+  variance <- filter(summary, empirical_variance > 0, estimated_variance > 0)
+  variance <- mutate(variance, Sample_Size = sample_size(n_aux, n_trial, "_"))
+  variance_plot <- ggplot(
+    variance,
+    aes(
+      x = empirical_variance,
+      y = estimated_variance,
+      color = Sample_Size,
+      shape = parameter
+    )
+  ) +
+    geom_abline(linetype = "dashed") +
+    geom_point(size = 3) +
+    facet_grid(. ~ Estimator) +
+    scale_x_continuous(transform = "log10", breaks = c(0.001, 0.01)) +
+    scale_y_continuous(transform = "log10", breaks = c(0.001, 0.01)) +
+    scale_color_manual(values = colors, labels = function(x) size_labels(x, "_")) +
+    scale_shape_discrete(labels = function(x) parse(text = x)) +
+    guides(
+      color = guide_legend(nrow = 2, order = 1),
+      shape = guide_legend(order = 2)
+    ) +
+    labs(
+      x = "Empirical Variance",
+      y = "Average Estimated Variance",
+      color = "Sample Size",
+      shape = "Parameter"
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "bottom",
+      legend.box = "vertical",
+      legend.spacing.y = unit(-5, "pt")
+    )
 
+  coverage <- mutate(summary, Sample_Size = sample_size(n_aux, n_trial))
+  coverage_plot <- ggplot(
+    coverage,
+    aes(x = Sample_Size, y = coverage, color = parameter, shape = parameter)
+  ) +
+    geom_point(size = 3) +
+    geom_hline(yintercept = 0.95, linetype = "dashed") +
+    facet_grid(. ~ Estimator) +
+    scale_color_manual(values = colors, labels = function(x) parse(text = x)) +
+    scale_shape_discrete(labels = function(x) parse(text = x)) +
+    labs(
+      x = "Auxiliary and Trial Sample Sizes",
+      y = "Empirical CI Coverage",
+      color = "Parameter",
+      shape = "Parameter"
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "bottom"
+    ) +
+    guides(x = guide_axis_nested())
 
-## table of selected variances
-summary.table %>%
-  filter(Version == "Proposed",
-         param %in% c("eta0", "eta1"))
-
-
-# plot confidence interval coverage ---------------------------------------
-
-ci_plot <- summary.table %>%
-  ggplot(
-    aes(x = interaction(n_aux, n_trial),
-        y = ci_cov,
-        color = Param,
-        shape = Param)) +
-  geom_point(size = 3) +
-  geom_hline(yintercept = 0.95,
-             linetype = "dashed") +
-  scale_color_manual(labels = parse_format(),
-                     values = pal) +
-  scale_shape_discrete(labels = parse_format()) +
-  facet_nested(~ Version) +
-  labs(y = "Empirical CI Coverage",
-       x = "Auxiliary and Trial Sample Sizes",
-       color = "Estimand",
-       shape = "Estimand") +
-  theme_bw() +
-  theme(panel.grid.minor = element_blank(),
-        panel.grid.major = element_blank(),
-        strip.text = element_text(face = "bold"),
-        legend.position = "bottom") +
-  guides(x = "axis_nested")
-
-ci_plot
-
-## save image
-ggsave("sim_figures/sim2/sim2_confidence.png",
-       dpi = 600, width = 5, height = 3.5)
-
+  dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+  write.csv(summary, file.path(figure_dir, paste0(run_id, "_summary.csv")), row.names = FALSE)
+  files <- file.path(
+    figure_dir,
+    paste0("monte_carlo_", run_id, c("_estimates.png", "_variance.png", "_confidence.png"))
+  )
+  ggsave(files[[1]], estimate_plot, width = 7, height = 3, dpi = dpi)
+  ggsave(files[[2]], variance_plot, width = 5.8, height = 4, dpi = dpi)
+  ggsave(files[[3]], coverage_plot, width = 7, height = 3.5, dpi = dpi)
+  invisible(files)
+}

@@ -1,225 +1,174 @@
-#' Crown DML estimator
+#' Proposed cross-fitted estimators
 #'
-#' estimate eta(0) and eta(1) using a crown DML estimator, i.e., accounting for
-#' nonresponse, with nonparametric sample splitting
+#' The default AIPW estimator uses cross-fitted nuisance models.
+#' G-formula uses outcome regressions only; IPW uses selection regressions only.
+#' These two alternatives return point estimates without standard errors.
 #'
-#' @param dat data frame containing the following columns:
+#' @param dat Combined data frame containing:
 #' \itemize{
-#'\item `S`: a binary indicator for whether the observation belongs to the trial
-#'data (`S`=1) the auxiliary data (`S`=0)
-#' \item `R`: a binary indicator for whether the observation is a responder
-#' (`R`=1) or not (`R`=0)
-#' \item `C`: a binary indicator for whether the outcome is censored (`C`=1) or
-#' not (`C`=0)
-#' \item `A`: a binary exposure
-#' \item `Y`: a binary outcome
-#' \item other covariates specified in `mu_fmla`
-#' \item `wt`: survey weights
+#'   \item `S`: trial (1) or auxiliary (0);
+#'   \item `A`: cluster treatment (0 or 1), in both samples;
+#'   \item `R`: response indicator;
+#'   \item `C`: censoring indicator (1 = censored);
+#'   \item `Y`: binary outcome;
+#'   \item `wt`: weight (1 for trial rows, positive sampling weights for auxiliary rows);
+#'   \item the baseline covariates used in the nuisance models.
 #' }
+#'   Use zero placeholders for unobserved `R`, `C`, and `Y`. Nonresponders'
+#'   covariates may be missing because those rows are not used in nuisance fits.
+#' @param mu_covariates,pi_covariates Character vectors of outcome and selection
+#'   predictor names, respectively; not formulas. Include relevant cluster
+#'   covariates; do not include `A`, `S`, `R`, `C`, `Y`, or `Q`.
+#' @param K Number of outer cross-fitting folds, at least two.
+#' @param method `"xgboost"` (default) or `"SuperLearner"`.
+#' @param arguments Optional named learner arguments. XGBoost uses its standard
+#'   defaults (100 boosting rounds); e.g.,
+#'   `list(nrounds = 100L, max_depth = 6L)`. SuperLearner requires
+#'   `SL.library` and `cvControl`, e.g.,
+#'   `list(SL.library = c("SL.glm", "SL.xgboost"), cvControl = list(V = 5L))`.
+#'   Inner SuperLearner CV is distinct from outer cross-fitting.
+#' @param random_seed Seed set before splitting `S`-by-`A` stratified
+#'   individual-level folds and fitting the nuisance models.
+#' @param estimator `"aipw"` (default), `"gformula"`, or `"ipw"`.
 #'
-#' @param mu_covariates a formula for the outcome regression model using
-#' variables in `dat`
+#' @details Uses fold-specific Hajek normalization and the equal average of
+#'   the fold estimates. Selection odds are `zeta / (1 - zeta)`. Covariance
+#'   uses the mean of fold-level individual contribution covariances divided
+#'   by the full observation count.
+#'   For sampling weights, contribution scaling uses observation counts, not
+#'   fold weight totals, so the estimate equals the weighted Hajek formula.
+#'   No probability clipping or alternative learner is silently applied.
 #'
-#' @param pi_covariates a formula for the propensity score regression model
-#' using variables in `dat`
-#'
-#' @param K a positive integer number of folds for sample splitting
-#'
-#' @param method a character string, method of nonparametric estimator
-#'
-#' @param arguments an optional list with arguments to pass to `nonpar_est`
-#'
-#' @return a list containing the following:
+#' @return A list containing:
 #' \itemize{
-#' \item `eta_hat`: a numeric vector estimated mean potential outcomes eta(0)
-#' and eta(1)
-#' \item `eta_hat_cov`: a numeric matrix, estimated covariance of `eta_hat`
-#' \item `dat`: a data frame with estimated propensity score weights
+#'   \item `eta_hat`: risks under control and treatment;
+#'   \item `eta_hat_cov`: their two-by-two covariance matrix (`NA` except AIPW);
+#'   \item `fold_estimates`: risks and covariance entries for each fold;
+#'   \item `dat`: input data plus folds, `Q`, out-of-fold outcome predictions,
+#'     selection probabilities, and selection odds.
 #' }
-#'
 #' @export
-dml_fit <- function(dat, mu_covariates, pi_covariates, K,
-                            method, arguments = NULL) {
+dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
+                    method = "xgboost", arguments = NULL, random_seed = 1L,
+                    estimator = c("aipw", "gformula", "ipw")) {
 
-  ## check input
-  stopifnot(
-    "dat must contain columns S, R, C, A, Y, wt" =
-      all(c("S", "R", "C", "A", "Y", "wt") %in% names(dat)),
-    "S must be binary (0/1)" = all(dat$S %in% c(0, 1)),
-    "R must be binary (0/1)" = all(dat$R %in% c(0, 1)),
-    "C must be binary (0/1)" = all(dat$C %in% c(0, 1)),
-    "A must be binary (0/1)" = all(dat$A %in% c(0, 1)),
-    "Y must be binary (0/1)" = all(dat$Y %in% c(0, 1)),
-    "mu_covariates must be columns of dat" = all(mu_covariates %in% names(dat)),
-    "pi_covariates must be columns of dat" = all(pi_covariates %in% names(dat)),
-    "K must be a positive integer" = K > 0 && K == round(K))
-
-
-  ## perform sample splitting
-  dat <- dat %>%
-    group_by(S, A) %>%
-    mutate(fold = sample(rep(1:K, length.out = n()))) %>%
-    ungroup() %>%
-    mutate(Q = S * R * (1 - C))
-
-  n <- sum(dat$wt)
-
-  ## initialize results
-  etahats <- data.frame(
-    fold = 1:K,
-    etahat_0 = NA, etahat_1 = NA, cov_00 = NA, cov_01 = NA, cov_11 = NA)
-
-  ## loop through K folds
-  for (k in 1:K) {
-
-    ## data sets of fold k and complement
-    dat_k <- dat %>% filter(fold == k)
-    dat_ck <- dat %>% filter(fold != k)
-
-    ## train outcome regression function mu on fold ck with forces A interaction
-    mu_mod_0 <- nonpar_est(
-      x = dat_ck %>% filter(Q == 1, A == 0) %>% select(all_of(mu_covariates)),
-      y = dat_ck %>% filter(Q == 1, A == 0) %>% select(Y) %>% unlist(),
-      method = method,
-      arguments = arguments)
-
-    mu_mod_1 <- nonpar_est(
-      x = dat_ck %>% filter(Q == 1, A == 1) %>% select(all_of(mu_covariates)),
-      y = dat_ck %>% filter(Q == 1, A == 1) %>% select(Y) %>% unlist(),
-      method = method,
-      arguments = arguments)
-
-    ## predict probabilities in fold k with with A set to 0 and 1
-    mu_k_ind <- dat_k$S == 0 | dat_k$R == 1
-    dat_k$muhat_0 <- dat_k$muhat_1 <- NA
-    dat_k$muhat_0[mu_k_ind] <- nonpar_pred(
-      mod = mu_mod_0,
-      newdata = dat_k[mu_k_ind,] %>%
-        select(all_of(mu_covariates)),
-      method = method)
-    dat_k$muhat_1[mu_k_ind] <- nonpar_pred(
-      mod = mu_mod_1,
-      newdata = dat_k[mu_k_ind,] %>%
-        select(all_of(mu_covariates)),
-      method = method)
-
-    ## train Q predictor on fold ck
-    Q0_ck <- dat_ck %>% filter((Q == 1 & A == 0) | S == 0)
-    Q1_ck <- dat_ck %>% filter((Q == 1 & A == 1) | S == 0)
-
-    Q_reg_0 <- nonpar_est(
-      x = Q0_ck %>% select(all_of(pi_covariates)),
-      y = Q0_ck$Q,
-      wts = Q0_ck$wt,
-      method = method,
-      arguments = arguments)
-
-    Q_reg_1 <- nonpar_est(
-      x = Q1_ck %>% select(all_of(pi_covariates)),
-      y = Q1_ck$Q,
-      wts = Q1_ck$wt,
-      method = method,
-      arguments = arguments)
-
-    ## predicted Q probabilities among uncensored responders in fold k
-    Q0_k_ind <- dat_k$Q == 1 & dat_k$A == 0
-    Q1_k_ind <- dat_k$Q == 1 & dat_k$A == 1
-    dat_k$Q_prob <- NA
-    dat_k$Q_prob[Q0_k_ind] <- nonpar_pred(
-      mod = Q_reg_0,
-      newdata = dat_k[Q0_k_ind,] %>% select(all_of(pi_covariates)),
-      method = method)
-    dat_k$Q_prob[Q1_k_ind] <- nonpar_pred(
-      mod = Q_reg_1,
-      newdata = dat_k[Q1_k_ind,] %>% select(all_of(pi_covariates)),
-      method = method)
-
-    ## estimated propensity scores in fold k trial data
-    Q_k_ind <- dat_k$Q == 1
-    dat_k$pihat <- NA_real_
-    dat_k$pihat[Q_k_ind] <- dat_k$Q_prob[Q_k_ind] /
-      (1 - dat_k$Q_prob[Q_k_ind])
-
-    ## Hajek estimator of sample size in fold k
-    n_trial_hat_k <- dat_k %>%
-      filter(Q == 1) %>%
-      mutate(
-        term_0 = (1 - A) / pihat,
-        term_1 = A / pihat) %>%
-      summarise(
-        nhat_0 = sum(term_0),
-        nhat_1 = sum(term_1)) %>%
-      unlist()
-
-    ## auxiliary sample size in fold k
-    n_aux_k <- sum(dat_k$wt[dat_k$S == 0])
-
-    ## total sample size in fold k
-    n_k <- sum(dat_k$wt)
-
-    ## AIPW estimator in fold k
-    etahat_k <- dat_k %>%
-      mutate(
-
-        ## IPW terms
-        ipw_0 = ifelse(Q == 1 & A == 0,
-                       (Y - muhat_0) / pihat,
-                       0),
-
-        ipw_1 = ifelse(Q == 1 & A == 1,
-                       (Y - muhat_1) / pihat,
-                       0),
-
-        ## outcome regression terms
-        or_0 = ifelse(S == 0, muhat_0 * wt, 0),
-        or_1 = ifelse(S == 0, muhat_1 * wt, 0),
-
-        ## influence function
-        if_0 = (Q * ipw_0 / n_trial_hat_k[1] +
-                  (1 - S) * or_0 / n_aux_k) * n_k,
-        if_1 = (Q * ipw_1 / n_trial_hat_k[2] +
-                  (1 - S) * or_1 / n_aux_k) * n_k) %>%
-
-      summarise(
-
-        ## AIPW estimator
-        etahat_0 = mean(if_0),
-        etahat_1 = mean(if_1),
-
-        ## covariance estimator
-        cov_00 = var(if_0) / n,
-        cov_01 = cov(if_0, if_1) / n,
-        cov_11 = var(if_1) / n)
-
-    etahats[k, 2:6] <- etahat_k
-
-    print(paste0("fold ", k, "/", K, " complete"))
-
+  # Split individuals within each sample and treatment arm.
+  method <- match.arg(method, c("xgboost", "SuperLearner"))
+  estimator <- match.arg(estimator)
+  set.seed(random_seed)
+  dat <- as.data.frame(dat)
+  dat$fold <- 0L
+  for (s in 0:1) {
+    for (a in 0:1) {
+      rows <- which(dat$S == s & dat$A == a)
+      dat$fold[rows] <- sample(rep(seq_len(K), length.out = length(rows)))
+    }
   }
 
-  ## aggregate across k folds
-  etahat <- colMeans(etahats[,2:6])
+  dat$Q <- dat$S * dat$R * (1 - dat$C)
+  dat$muhat_0 <- dat$muhat_1 <- dat$Q_prob <- dat$pihat <- NA_real_
+  fold_estimates <- data.frame(
+    etahat_0 = numeric(K), etahat_1 = numeric(K),
+    cov_00 = numeric(K), cov_01 = numeric(K), cov_11 = numeric(K)
+  )
 
-  ## estimated variance
-  est_var = matrix(
-    c(etahat["cov_00"], etahat["cov_01"],
-      etahat["cov_01"], etahat["cov_11"]),
-    nrow = 2, ncol = 2, byrow = TRUE)
+  for (k in seq_len(K)) {
 
-  # return list of results --------------------------------------------------
+    # Training data and held-out data.
+    training <- dat[dat$fold != k, ]
+    test <- dat[dat$fold == k, ]
+    observed0 <- training[training$Q == 1 & training$A == 0, ]
+    observed1 <- training[training$Q == 1 & training$A == 1, ]
+    selection0 <- training[(training$Q == 1 & training$A == 0) | training$S == 0, ]
+    selection1 <- training[(training$Q == 1 & training$A == 1) | training$S == 0, ]
 
-  res <- list(
+    # Fit only the nuisance models required by the selected estimator.
+    if (estimator != "ipw") {
+      mu0 <- nonpar_est(
+        observed0[mu_covariates], observed0$Y, method, arguments
+      )
+      mu1 <- nonpar_est(
+        observed1[mu_covariates], observed1$Y, method, arguments
+      )
+    }
+    if (estimator != "gformula") {
+      Q0 <- nonpar_est(
+        selection0[pi_covariates], selection0$Q, method, arguments, selection0$wt
+      )
+      Q1 <- nonpar_est(
+        selection1[pi_covariates], selection1$Q, method, arguments, selection1$wt
+      )
+    }
 
-    ## causal parameter estimate
-    eta_hat = c("etahat_0" = unname(etahat["etahat_0"]),
-                "etahat_1" = unname(etahat["etahat_1"])),
+    # Predict only on the held-out fold.
+    predict_mu <- test$S == 0 | test$R == 1
+    control <- test$Q == 1 & test$A == 0
+    treated <- test$Q == 1 & test$A == 1
+    auxiliary <- test$S == 0
+    if (estimator != "ipw") {
+      test$muhat_0[predict_mu] <- nonpar_pred(
+        mu0, test[predict_mu, mu_covariates, drop = FALSE], method
+      )
+      test$muhat_1[predict_mu] <- nonpar_pred(
+        mu1, test[predict_mu, mu_covariates, drop = FALSE], method
+      )
+    }
+    if (estimator != "gformula") {
+      test$Q_prob[control] <- nonpar_pred(
+        Q0, test[control, pi_covariates, drop = FALSE], method
+      )
+      test$Q_prob[treated] <- nonpar_pred(
+        Q1, test[treated, pi_covariates, drop = FALSE], method
+      )
+      test$pihat <- test$Q_prob / (1 - test$Q_prob)
+    }
 
-    ## estimated covariance of eta_hat
-    eta_hat_cov = est_var,
+    # G-formula and IPW have their own point estimates, not AIPW variances.
+    if (estimator != "aipw") {
+      if (estimator == "gformula") {
+        eta0 <- weighted.mean(test$muhat_0[auxiliary], test$wt[auxiliary])
+        eta1 <- weighted.mean(test$muhat_1[auxiliary], test$wt[auxiliary])
+      } else {
+        eta0 <- weighted.mean(test$Y[control], 1 / test$pihat[control])
+        eta1 <- weighted.mean(test$Y[treated], 1 / test$pihat[treated])
+      }
+      fold_estimates[k, ] <- c(eta0, eta1, NA_real_, NA_real_, NA_real_)
+      dat[dat$fold == k, ] <- test
+      next
+    }
 
-    ## data set
-    dat = dat)
+    # Fold-specific Hajek denominators and auxiliary weight total.
+    h0 <- sum(1 / test$pihat[control])
+    h1 <- sum(1 / test$pihat[treated])
+    n_aux <- sum(test$wt[auxiliary])
 
-  return(res)
+    # Outcome averages plus inverse-probability corrections.
+    phi0 <- phi1 <- numeric(nrow(test))
+    phi0[control] <- (test$Y[control] - test$muhat_0[control]) / test$pihat[control] / h0
+    phi1[treated] <- (test$Y[treated] - test$muhat_1[treated]) / test$pihat[treated] / h1
+    phi0[auxiliary] <- test$wt[auxiliary] * test$muhat_0[auxiliary] / n_aux
+    phi1[auxiliary] <- test$wt[auxiliary] * test$muhat_1[auxiliary] / n_aux
 
+    covariance <- cov(cbind(phi0, phi1) * nrow(test)) / nrow(dat)
+    fold_estimates[k, ] <- c(sum(phi0), sum(phi1),
+                             covariance[1, 1], covariance[1, 2], covariance[2, 2])
+    dat[dat$fold == k, ] <- test
+  }
+
+  # Average the fold-specific estimates and covariance entries.
+  average <- colMeans(fold_estimates)
+  covariance <- matrix(
+    c(average["cov_00"], average["cov_01"],
+      average["cov_01"], average["cov_11"]), nrow = 2
+  )
+  if (estimator != "aipw") {
+    warning("Cross-fitted G-formula/IPW returns point estimates only; standard errors and confidence intervals are not implemented.",
+            call. = FALSE)
+  }
+  list(
+    eta_hat = average[c("etahat_0", "etahat_1")],
+    eta_hat_cov = covariance,
+    fold_estimates = fold_estimates,
+    dat = dat
+  )
 }
