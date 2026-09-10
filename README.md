@@ -74,8 +74,8 @@ The main choices are made directly in `crown()`:
 `proposed` combines trial outcomes with auxiliary covariates to adjust for
 nonresponse and censoring. `naive` uses trial responders alone.
 
-All 12 combinations return point estimates. Standard errors and 95% confidence
-intervals are currently available for:
+All choices return point estimates. Standard errors and 95% confidence intervals
+are currently available for:
 
 | Model | Version | Estimator | Auxiliary weight | CI |
 |---|---|---|---|---|
@@ -126,25 +126,9 @@ analyses; Naive analyses do not use the auxiliary sample.
 
 ### Included weighted data
 
-`crown_example` has 100,000 rows and 20 clusters. Each cluster contains 2,500
-trial and 2,500 auxiliary observations. The auxiliary sample contains 1,500
-people with `W1 = 1` and 1,000 with `W1 = 0` in each cluster, so `W1 = 1` is
-deliberately oversampled. `sampling_weight` corrects this unequal sampling. The
-compressed dataset is about 288 KB.
-
-## Main functions
-
-| Function | What it does |
-|---|---|
-| `crown()` | Runs one selected analysis |
-| `fit_gformula()` | Fits parametric G-formula |
-| `fit_ipw()` | Fits parametric IPW |
-| `fit_aipw()` | Fits parametric AIPW |
-| `dml_fit()` | Fits the lower-level cross-fitted estimator |
-
-Use `print(fit)` for the four main estimates and `summary(fit)` for estimates,
-standard errors, and confidence intervals. Unavailable intervals are shown as
-`NA`.
+`crown_example` has 100,000 rows in 20 clusters, split equally between trial and
+auxiliary observations. It includes an auxiliary sampling-weight column so the
+weighted interface can be used directly.
 
 ## Simulations
 
