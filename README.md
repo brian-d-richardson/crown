@@ -71,8 +71,8 @@ The main choices are made directly in `crown()`:
 | `estimator` | `"aipw"` | `"aipw"`, `"gformula"`, `"ipw"` |
 | `model` | `"xgboost"` | `"xgboost"`, `"logistic"` |
 
-`proposed` uses the auxiliary sample to represent the target population.
-`naive` uses the trial responders and does not adjust for nonresponse.
+`proposed` combines trial outcomes with auxiliary covariates to adjust for
+nonresponse and censoring. `naive` uses trial responders alone.
 
 All 12 combinations return point estimates. Standard errors and 95% confidence
 intervals are currently available for:
@@ -107,8 +107,8 @@ nonresponders and censored responders.
 
 ### Auxiliary sampling weights
 
-If the auxiliary sample already represents the target population, leave the
-weight unspecified:
+If auxiliary observations have equal sampling weights, leave the weight
+unspecified:
 
 ```r
 auxiliary_weight = NULL

@@ -24,7 +24,7 @@
 #' @param covariates Shared baseline covariate column names, including the
 #'   cluster-level covariates needed for conditional independence.
 #' @param version `"proposed"` (default) or `"naive"`. Proposed estimators use
-#'   auxiliary covariates; naive estimators target trial responders.
+#'   auxiliary covariates; naive estimators use trial responders alone.
 #' @param estimator `"aipw"` (default), `"gformula"`, or `"ipw"`.
 #'   Only the selected estimator and its required nuisance models are fitted.
 #' @param model `"xgboost"` (default) uses cross-fitting; `"logistic"` uses

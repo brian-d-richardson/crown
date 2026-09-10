@@ -45,7 +45,7 @@ must be constant within each cluster.}
 cluster-level covariates needed for conditional independence.}
 
 \item{version}{\code{"proposed"} (default) or \code{"naive"}. Proposed estimators use
-auxiliary covariates; naive estimators target trial responders.}
+auxiliary covariates; naive estimators use trial responders alone.}
 
 \item{estimator}{\code{"aipw"} (default), \code{"gformula"}, or \code{"ipw"}.
 Only the selected estimator and its required nuisance models are fitted.}
