@@ -12,6 +12,7 @@ library(tidyr)
 library(ggplot2)
 library(ggh4x)
 library(legendry)
+library(grid)
 library(crown)
 
 # Functions

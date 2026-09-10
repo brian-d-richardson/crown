@@ -35,11 +35,14 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
     coverage = mean(truth >= lower & truth <= upper),
     .groups = "drop"
   )
-  summary <- mutate(summary, parameter = factor(
-    parameter,
-    levels = c("eta0", "eta1", "rd", "rr"),
-    labels = c("eta(0)", "eta(1)", "RD", "RR")
-  ))
+  summary <- mutate(summary,
+    Estimator = factor(Estimator, levels = c("AIPW", "DML")),
+    parameter = factor(
+      parameter,
+      levels = c("eta0", "eta1", "rd", "rr"),
+      labels = c("eta(0)", "eta(1)", "RD", "RR")
+    )
+  )
 
   sample_size <- function(auxiliary, trial, separator = ".") {
     interaction(
@@ -69,7 +72,7 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
   ) +
     geom_boxplot(alpha = 0.5) +
     geom_hline(yintercept = mean(results$rd), linetype = "dashed") +
-    facet_grid(. ~ Estimator) +
+    facet_nested(. ~ Estimator) +
     scale_color_manual(values = colors) +
     scale_fill_manual(values = colors) +
     labs(
@@ -79,6 +82,7 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
     theme_bw() +
     theme(
       panel.grid = element_blank(),
+      strip.text = element_text(face = "bold"),
       legend.position = "none"
     ) +
     guides(x = guide_axis_nested())
@@ -96,7 +100,7 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
   ) +
     geom_abline(linetype = "dashed") +
     geom_point(size = 3) +
-    facet_grid(. ~ Estimator) +
+    facet_nested(. ~ Estimator) +
     scale_x_continuous(transform = "log10", breaks = c(0.001, 0.01)) +
     scale_y_continuous(transform = "log10", breaks = c(0.001, 0.01)) +
     scale_color_manual(values = colors, labels = function(x) size_labels(x, "_")) +
@@ -114,6 +118,7 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
     theme_bw() +
     theme(
       panel.grid = element_blank(),
+      strip.text = element_text(face = "bold"),
       legend.position = "bottom",
       legend.box = "vertical",
       legend.spacing.y = unit(-5, "pt")
@@ -126,18 +131,19 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
   ) +
     geom_point(size = 3) +
     geom_hline(yintercept = 0.95, linetype = "dashed") +
-    facet_grid(. ~ Estimator) +
+    facet_nested(. ~ Estimator) +
     scale_color_manual(values = colors, labels = function(x) parse(text = x)) +
     scale_shape_discrete(labels = function(x) parse(text = x)) +
     labs(
       x = "Auxiliary and Trial Sample Sizes",
       y = "Empirical CI Coverage",
-      color = "Parameter",
-      shape = "Parameter"
+      color = "Estimand",
+      shape = "Estimand"
     ) +
     theme_bw() +
     theme(
       panel.grid = element_blank(),
+      strip.text = element_text(face = "bold"),
       legend.position = "bottom"
     ) +
     guides(x = guide_axis_nested())
@@ -148,8 +154,8 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
     figure_dir,
     paste0("monte_carlo_", run_id, c("_estimates.png", "_variance.png", "_confidence.png"))
   )
-  ggsave(files[[1]], estimate_plot, width = 7, height = 3, dpi = dpi)
+  ggsave(files[[1]], estimate_plot, width = 5, height = 3, dpi = dpi)
   ggsave(files[[2]], variance_plot, width = 5.8, height = 4, dpi = dpi)
-  ggsave(files[[3]], coverage_plot, width = 7, height = 3.5, dpi = dpi)
+  ggsave(files[[3]], coverage_plot, width = 5, height = 3.5, dpi = dpi)
   invisible(files)
 }

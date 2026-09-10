@@ -46,7 +46,7 @@ plot_sim1 <- function(results, run_id, figure_dir, dpi = 600) {
   )
   summary <- mutate(summary,
     Estimator = factor(Estimator, c("G-Formula", "IPW", "AIPW")),
-    Version = factor(Version, c("Naive", "Proposed")),
+    Version = factor(Version, c("Proposed", "Naive")),
     Pi = factor(Pi, c("-", "Incorrect Pi", "Correct Pi")),
     Mu = factor(Mu, c("-", "Incorrect Mu", "Correct Mu")),
     parameter = factor(
@@ -65,7 +65,7 @@ plot_sim1 <- function(results, run_id, figure_dir, dpi = 600) {
   }
   formatted <- mutate(results,
     Estimator = factor(Estimator, c("G-Formula", "IPW", "AIPW")),
-    Version = factor(Version, c("Naive", "Proposed")),
+    Version = factor(Version, c("Proposed", "Naive")),
     Mu = if_else(
       Version == "Naive", "-",
       if_else(mu_correct, "Correct Mu", "Incorrect Mu")
@@ -86,7 +86,17 @@ plot_sim1 <- function(results, run_id, figure_dir, dpi = 600) {
     Pi = factor(Pi, c("-", "Incorrect Pi", "Correct Pi")),
     Mu = factor(Mu, c("-", "Incorrect Mu", "Correct Mu"))
   )
-  colors <- c("G-Formula" = "#FF6800", "IPW" = "#803E75", "AIPW" = "#C10020")
+  pi_labels <- c(
+    "Correct Pi" = '"Correct "*pi[a]',
+    "Incorrect Pi" = '"Incorrect "*pi[a]',
+    "-" = '"-"'
+  )
+  mu_labels <- c(
+    "Correct Mu" = '"Correct "*mu[a]',
+    "Incorrect Mu" = '"Incorrect "*mu[a]',
+    "-" = '"-"'
+  )
+  colors <- c("#FF6800", "#803E75", "#C10020", "#FFB300")
   shade <- distinct(formatted, Estimator, Version, Pi, Mu, consistent)
   shade <- filter(shade, !consistent)
   shade <- mutate(shade, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf)
@@ -102,12 +112,22 @@ plot_sim1 <- function(results, run_id, figure_dir, dpi = 600) {
     ) +
     geom_boxplot(alpha = 0.5) +
     geom_hline(yintercept = mean(formatted$rd), linetype = "dashed") +
-    facet_nested(Estimator ~ Version + Pi + Mu) +
+    facet_nested(
+      Estimator ~ Version + Pi + Mu,
+      labeller = labeller(
+        Pi = as_labeller(pi_labels, label_parsed),
+        Mu = as_labeller(mu_labels, label_parsed)
+      )
+    ) +
     scale_color_manual(values = colors) +
     scale_fill_manual(values = colors) +
     labs(x = "Auxiliary and Trial Sample Sizes", y = expression(hat(RD))) +
     theme_bw() +
-    theme(panel.grid = element_blank(), legend.position = "none") +
+    theme(
+      panel.grid = element_blank(),
+      strip.text = element_text(face = "bold"),
+      legend.position = "none"
+    ) +
     guides(x = guide_axis_nested())
 
   variance_data <- filter(summary,
@@ -122,36 +142,75 @@ plot_sim1 <- function(results, run_id, figure_dir, dpi = 600) {
       color = factor(n_trial), shape = parameter
     )
   ) +
+    geom_rect(
+      data = shade,
+      aes(xmin = 0, xmax = xmax, ymin = 0, ymax = ymax),
+      inherit.aes = FALSE, fill = "#e5e4e2"
+    ) +
     geom_abline(linetype = "dashed") +
     geom_point(size = 3) +
-    facet_nested(Estimator ~ Version + Pi + Mu) +
+    facet_nested(
+      Estimator ~ Version + Pi + Mu,
+      labeller = labeller(
+        Pi = as_labeller(pi_labels, label_parsed),
+        Mu = as_labeller(mu_labels, label_parsed)
+      )
+    ) +
     scale_x_continuous(
       transform = "log10",
       breaks = c(0.001, 0.01),
       labels = c("0.001", "0.01")
     ) +
-    scale_y_continuous(transform = "log10") +
+    scale_y_continuous(
+      transform = "log10",
+      breaks = c(0.001, 0.01)
+    ) +
+    scale_color_manual(values = colors) +
+    scale_shape_discrete(labels = function(x) parse(text = x)) +
     labs(
       x = "Empirical Variance", y = "Average Estimated Variance",
       color = "Trial and Auxiliary Sample Size", shape = "Parameter"
     ) +
     theme_bw() +
-    theme(panel.grid = element_blank(), legend.position = "bottom")
+    theme(
+      panel.grid = element_blank(),
+      strip.text = element_text(face = "bold"),
+      legend.position = "bottom",
+      legend.box = "vertical",
+      legend.spacing.y = unit(-5, "pt")
+    )
 
   coverage_data <- mutate(summary, Sample_Size = sample_size(n_aux, n_trial))
   coverage <- ggplot(
     coverage_data,
     aes(Sample_Size, coverage, color = parameter, shape = parameter)
   ) +
+    geom_rect(
+      data = shade,
+      aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+      inherit.aes = FALSE, fill = "#e5e4e2"
+    ) +
     geom_point(size = 3) +
     geom_hline(yintercept = 0.95, linetype = "dashed") +
-    facet_nested(Estimator ~ Version + Pi + Mu) +
+    scale_color_manual(values = colors, labels = function(x) parse(text = x)) +
+    scale_shape_discrete(labels = function(x) parse(text = x)) +
+    facet_nested(
+      Estimator ~ Version + Pi + Mu,
+      labeller = labeller(
+        Pi = as_labeller(pi_labels, label_parsed),
+        Mu = as_labeller(mu_labels, label_parsed)
+      )
+    ) +
     labs(
       x = "Auxiliary and Trial Sample Sizes", y = "Empirical CI Coverage",
-      color = "Parameter", shape = "Parameter"
+      color = "Estimand", shape = "Estimand"
     ) +
     theme_bw() +
-    theme(panel.grid = element_blank(), legend.position = "bottom") +
+    theme(
+      panel.grid = element_blank(),
+      strip.text = element_text(face = "bold"),
+      legend.position = "bottom"
+    ) +
     guides(x = guide_axis_nested())
 
   dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
@@ -161,7 +220,7 @@ plot_sim1 <- function(results, run_id, figure_dir, dpi = 600) {
     paste0("simulation1_", run_id, c("_estimates.png", "_variance.png", "_confidence.png"))
   )
   ggsave(files[1], estimates, width = 8, height = 6, dpi = dpi)
-  ggsave(files[2], variance, width = 10, height = 6, dpi = dpi)
+  ggsave(files[2], variance, width = 8, height = 6, dpi = dpi)
   ggsave(files[3], coverage, width = 8, height = 6, dpi = dpi)
   invisible(files)
 }
