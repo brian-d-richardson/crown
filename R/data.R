@@ -1,6 +1,8 @@
 #' Weighted trial and auxiliary example
 #'
-#' A synthetic cluster-randomized trial and a weighted auxiliary sample.
+#' A synthetic cluster-randomized trial and a weighted auxiliary sample with
+#' 20 clusters. Each cluster contains 2,500 trial observations and 2,500
+#' auxiliary observations.
 #'
 #' @format A data frame with 100,000 rows and 12 variables:
 #' \describe{

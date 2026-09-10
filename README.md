@@ -52,22 +52,16 @@ print(fit)
 summary(fit)
 ```
 
-The complete script is also installed with the package:
-
-```r
-source(system.file("examples", "run_analysis.R", package = "crown"))
-```
-
 ### Example result
 
 | Parameter | Estimate | Standard error | 95% CI |
 |---|---:|---:|---|
-| `eta(0)` | 0.285 | 0.005 | [0.275, 0.294] |
-| `eta(1)` | 0.427 | 0.006 | [0.415, 0.438] |
-| `RD` | 0.142 | 0.007 | [0.127, 0.156] |
-| `RR` | 1.498 | 0.032 | [1.436, 1.560] |
+| `eta(0)` | 0.272 | 0.005 | [0.263, 0.281] |
+| `eta(1)` | 0.404 | 0.006 | [0.392, 0.416] |
+| `RD` | 0.132 | 0.007 | [0.118, 0.147] |
+| `RR` | 1.486 | 0.033 | [1.422, 1.550] |
 
-This run took 5.44 seconds with R 4.5.2 and XGBoost 3.2.1.1.
+This run took 5.50 seconds with R 4.5.2 and XGBoost 3.2.1.1.
 These are results from one synthetic dataset, not Monte Carlo averages.
 
 ## Choose the analysis
@@ -134,11 +128,11 @@ analyses; Naive analyses do not use the auxiliary sample.
 
 ### Included weighted data
 
-`crown_example` has 100,000 rows and 200 clusters. Each cluster contains 250
-trial and 250 auxiliary observations. The auxiliary sample contains 150 people
-with `W1 = 1` and 100 with `W1 = 0` in each cluster, so `W1 = 1` is deliberately
-oversampled. `sampling_weight` corrects this unequal sampling. The compressed
-dataset is about 364 KB.
+`crown_example` has 100,000 rows and 20 clusters. Each cluster contains 2,500
+trial and 2,500 auxiliary observations. The auxiliary sample contains 1,500
+people with `W1 = 1` and 1,000 with `W1 = 0` in each cluster, so `W1 = 1` is
+deliberately oversampled. `sampling_weight` corrects this unequal sampling. The
+compressed dataset is about 288 KB.
 
 ## Main functions
 

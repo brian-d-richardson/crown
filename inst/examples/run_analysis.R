@@ -5,6 +5,7 @@ library(crown)
 data(crown_example)
 
 # Split trial and auxiliary samples
+# The data contain 20 clusters and 100,000 observations in total.
 
 trial <- crown_example[crown_example$S == 1, ]
 auxiliary <- crown_example[crown_example$S == 0, ]
