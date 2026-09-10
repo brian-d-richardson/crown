@@ -96,7 +96,7 @@ one person.
 | Variable | Trial | Auxiliary |
 |---|---|---|
 | Cluster ID | Required | Required; must match a trial cluster |
-| Treatment | Required and constant within cluster | Inferred from the trial |
+| Treatment | Required and constant within cluster | Not required |
 | Response | Required | Not required |
 | Censoring | Required | Not required |
 | Outcome | Required for uncensored responders | Not required |

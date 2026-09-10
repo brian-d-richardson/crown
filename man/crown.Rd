@@ -31,8 +31,7 @@ crown(
 
 \item{outcome}{Binary outcome column; required for uncensored responders.}
 
-\item{treatment}{Cluster-level treatment column in the trial. Auxiliary
-treatment is matched using the cluster identifier.}
+\item{treatment}{Cluster-level treatment column in the trial.}
 
 \item{response}{Trial response indicator column (1 = responder).}
 

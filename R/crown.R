@@ -15,8 +15,7 @@
 #'
 #' @param trial_data,auxiliary_data Data frames for the trial and auxiliary sample.
 #' @param outcome Binary outcome column; required for uncensored responders.
-#' @param treatment Cluster-level treatment column in the trial. Auxiliary
-#'   treatment is matched using the cluster identifier.
+#' @param treatment Cluster-level treatment column in the trial.
 #' @param response Trial response indicator column (1 = responder).
 #' @param censoring Censoring indicator column (1 = censored).
 #' @param cluster Cluster identifier column shared by both samples. Treatment
