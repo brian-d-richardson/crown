@@ -1,8 +1,8 @@
 # crown: Cluster-Randomized Trial Analysis with Outcomes Weighted for Nonresponse
 
 `crown` combines a cluster-randomized trial with auxiliary baseline data to
-estimate the risks under control and treatment, their risk difference, and
-their risk ratio.
+estimate population mean potential outcomes and population-average causal
+effects on the risk-difference and risk-ratio scales.
 
 ## Installation
 

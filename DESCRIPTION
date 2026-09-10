@@ -5,10 +5,11 @@ Authors@R: c(
     person("Brian", "Richardson", email = "richabr@wfu.edu", role = "aut"),
     person("zhitanhe", email = "zhitanhe@unc.edu", role = c("aut", "cre"))
     )
-Description: Estimates population causal risks and contrasts using trial and
-    auxiliary data. Provides parametric G-formula, inverse probability weighting,
-    augmented inverse probability weighting, and cross-fitted double machine
-    learning with XGBoost or SuperLearner nuisance regressions.
+Description: Estimates population mean potential outcomes and population-average
+    causal effects using trial and auxiliary data. Provides parametric G-formula,
+    inverse probability weighting, augmented inverse probability weighting, and
+    cross-fitted double machine learning with XGBoost or SuperLearner nuisance
+    regressions.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
