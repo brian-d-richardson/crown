@@ -77,12 +77,13 @@ nonresponse and censoring. `naive` uses trial responders alone.
 All 12 combinations return point estimates. Standard errors and 95% confidence
 intervals are currently available for:
 
-| Model | Version | Estimator | CI |
-|---|---|---|---|
-| Logistic | Naive or Proposed | G-formula, IPW, or AIPW | Yes |
-| XGBoost | Proposed | AIPW | Yes |
-| XGBoost | Proposed | G-formula or IPW | No |
-| XGBoost | Naive | G-formula, IPW, or AIPW | No |
+| Model | Version | Estimator | Auxiliary weight | CI |
+|---|---|---|---|---|
+| Logistic | Proposed | G-formula, IPW, or AIPW | With or without | Yes |
+| Logistic | Naive | G-formula, IPW, or AIPW | Not used | Yes |
+| XGBoost | Proposed | AIPW | With or without | Yes |
+| XGBoost | Proposed | G-formula or IPW | With or without | No |
+| XGBoost | Naive | G-formula, IPW, or AIPW | Not used | No |
 
 XGBoost uses cross-fitting. `K = 5L` sets the number of folds. Use `arguments`
 to pass XGBoost settings and `random_seed` to reproduce the fold split.
