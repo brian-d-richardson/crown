@@ -145,8 +145,8 @@ source("simulation/sim_scripts/ss2.R")
 ```
 
 - Simulation 1 compares Naive and Proposed parametric G-formula, IPW, and AIPW.
-- Simulation 2 compares Proposed parametric AIPW with Proposed cross-fitted
-  nonparametric AIPW.
+- Simulation 2 compares all seven supported combinations: the six parametric
+  Version-Estimator combinations and Proposed nonparametric AIPW.
 - Both use `(500, 500)`, `(500, 5000)`, `(5000, 500)`, and `(5000, 5000)` for
   `(n_trial, n_auxiliary)`.
 - Both currently run 20 Monte Carlo replicates per sample-size combination.

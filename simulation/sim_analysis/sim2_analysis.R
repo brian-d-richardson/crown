@@ -2,8 +2,42 @@
 
 # Summarize and plot the simulation results.
 plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
+  method_levels <- c(
+    "Proposed|G-Formula|Parametric",
+    "Proposed|IPW|Parametric",
+    "Proposed|AIPW|Parametric",
+    "Proposed|AIPW|Nonparametric",
+    "Naive|G-Formula|Parametric",
+    "Naive|IPW|Parametric",
+    "Naive|AIPW|Parametric"
+  )
+  method_labels <- c(
+    "Proposed\nG-Formula (Parametric)",
+    "Proposed\nIPW (Parametric)",
+    "Proposed\nAIPW (Parametric)",
+    "Proposed\nAIPW (Nonparametric)",
+    "Naive\nG-Formula (Parametric)",
+    "Naive\nIPW (Parametric)",
+    "Naive\nAIPW (Parametric)"
+  )
+  method_factor <- function(version, estimator, model) {
+    factor(
+      paste(version, estimator, model, sep = "|"),
+      levels = method_levels,
+      labels = method_labels
+    )
+  }
+  method_design <- matrix(
+    c(
+      1L, 1L, 2L, 2L, 3L, 3L, 4L, 4L,
+      NA, 5L, 5L, 6L, 6L, 7L, 7L, NA
+    ),
+    nrow = 2L,
+    byrow = TRUE
+  )
+
   summary <- select(results,
-    seed, Version, Estimator, n_trial, n_aux,
+    seed, Version, Model, Estimator, n_trial, n_aux,
     eta_0, eta_1, rd, rr, etahat_0, etahat_1, rdhat, rrhat,
     cov_00, cov_11, var_rd, var_rr
   )
@@ -26,7 +60,9 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
     lower = est - 1.96 * sqrt(Var),
     upper = est + 1.96 * sqrt(Var)
   )
-  summary <- group_by(summary, Version, Estimator, n_trial, n_aux, parameter)
+  summary <- group_by(
+    summary, Version, Model, Estimator, n_trial, n_aux, parameter
+  )
   summary <- summarise(summary,
     empirical_variance = var(est),
     estimated_variance = mean(Var),
@@ -36,7 +72,7 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
     .groups = "drop"
   )
   summary <- mutate(summary,
-    Estimator = factor(Estimator, levels = c("AIPW", "DML")),
+    Method = method_factor(Version, Estimator, Model),
     parameter = factor(
       parameter,
       levels = c("eta0", "eta1", "rd", "rr"),
@@ -60,21 +96,27 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
   }
 
   results <- mutate(results,
-    Version = factor(Version, levels = c("Naive", "Proposed")),
-    Estimator = factor(Estimator, levels = c("AIPW", "DML")),
+    Method = method_factor(Version, Estimator, Model),
+    Style = paste(Estimator, Model),
     Sample_Size = sample_size(n_aux, n_trial)
   )
   colors <- c("#FF6800", "#803E75", "#C10020", "#FFB300")
+  method_colors <- c(
+    "AIPW Parametric" = colors[[1]],
+    "AIPW Nonparametric" = colors[[2]],
+    "G-Formula Parametric" = colors[[3]],
+    "IPW Parametric" = colors[[4]]
+  )
 
   estimate_plot <- ggplot(
     results,
-    aes(x = Sample_Size, y = rdhat, color = Estimator, fill = Estimator)
+    aes(x = Sample_Size, y = rdhat, color = Style, fill = Style)
   ) +
     geom_boxplot(alpha = 0.5) +
     geom_hline(yintercept = mean(results$rd), linetype = "dashed") +
-    facet_nested(. ~ Estimator) +
-    scale_color_manual(values = colors) +
-    scale_fill_manual(values = colors) +
+    ggh4x::facet_manual(vars(Method), design = method_design) +
+    scale_color_manual(values = method_colors) +
+    scale_fill_manual(values = method_colors) +
     labs(
       x = "Auxiliary and Trial Sample Sizes",
       y = expression(hat(RD))
@@ -100,7 +142,7 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
   ) +
     geom_abline(linetype = "dashed") +
     geom_point(size = 3) +
-    facet_nested(. ~ Estimator) +
+    ggh4x::facet_manual(vars(Method), design = method_design) +
     scale_x_continuous(transform = "log10", breaks = c(0.001, 0.01)) +
     scale_y_continuous(transform = "log10", breaks = c(0.001, 0.01)) +
     scale_color_manual(values = colors, labels = function(x) size_labels(x, "_")) +
@@ -131,7 +173,7 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
   ) +
     geom_point(size = 3) +
     geom_hline(yintercept = 0.95, linetype = "dashed") +
-    facet_nested(. ~ Estimator) +
+    ggh4x::facet_manual(vars(Method), design = method_design) +
     scale_color_manual(values = colors, labels = function(x) parse(text = x)) +
     scale_shape_discrete(labels = function(x) parse(text = x)) +
     labs(
@@ -154,8 +196,8 @@ plot_sim2 <- function(results, run_id, figure_dir, dpi = 600) {
     figure_dir,
     paste0("monte_carlo_", run_id, c("_estimates.png", "_variance.png", "_confidence.png"))
   )
-  ggsave(files[[1]], estimate_plot, width = 5, height = 3, dpi = dpi)
-  ggsave(files[[2]], variance_plot, width = 5.8, height = 4, dpi = dpi)
-  ggsave(files[[3]], coverage_plot, width = 5, height = 3.5, dpi = dpi)
+  ggsave(files[[1]], estimate_plot, width = 10, height = 6, dpi = dpi)
+  ggsave(files[[2]], variance_plot, width = 10, height = 7.5, dpi = dpi)
+  ggsave(files[[3]], coverage_plot, width = 10, height = 6.5, dpi = dpi)
   invisible(files)
 }

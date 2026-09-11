@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-# Simulation 2: parametric AIPW vs cross-fitted XGBoost DML
+# Simulation 2: all supported estimator combinations
 
 project_dir <- normalizePath(file.path(dirname(sys.frame(1)$ofile), "..", ".."))
 setwd(project_dir)
@@ -27,7 +27,7 @@ sample_sizes <- expand.grid(
 )
 mc_reps <- 20L
 
-run_id <- "xgboost_dml_mc20"
+run_id <- "all_estimators_mc20"
 data_dir <- file.path(project_dir, "simulation", "sim_data", "sim2")
 figure_dir <- file.path(project_dir, "simulation", "sim_figures", "sim2")
 

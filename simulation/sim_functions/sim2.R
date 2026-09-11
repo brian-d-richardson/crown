@@ -1,4 +1,4 @@
-# Simulation 2: parametric AIPW and cross-fitted DML -------------------------
+# Simulation 2: all supported estimators ------------------------------------
 
 # Generate one trial and one auxiliary sample from the nonlinear DGP.
 generate_sim2_data <- function(
@@ -90,11 +90,24 @@ run_sim2 <- function(
       20L, grid$n_trial[i], grid$n_auxiliary[i], 0.5, 0.3, grid$seed[i]
     )
 
-    # Fit parametric AIPW and cross-fitted DML.
-    aipw <- fit_aipw(
-      generated$data, Y ~ A * (X1 + W1 + W2 + W3),
-      Q ~ X1 + W1 + W2 + W3, "proposed"
+    # Fit the six parametric combinations.
+    outcome_formula <- Y ~ A * (X1 + W1 + W2 + W3)
+    propensity_formula <- Q ~ X1 + W1 + W2 + W3
+    censoring_formula <- C ~ X1 + W1 + W2 + W3
+    parametric <- rbind(
+      fit_gformula(generated$data, outcome_formula, "proposed"),
+      fit_ipw(generated$data, propensity_formula, "proposed"),
+      fit_aipw(
+        generated$data, outcome_formula, propensity_formula, "proposed"
+      ),
+      fit_gformula(generated$data, outcome_formula, "naive"),
+      fit_ipw(generated$data, censoring_formula, "naive"),
+      fit_aipw(
+        generated$data, outcome_formula, censoring_formula, "naive"
+      )
     )
+
+    # Fit the supported Proposed nonparametric AIPW estimator.
     dml <- dml_fit(
       generated$data, covariates, covariates, K,
       arguments, random_seed = grid$seed[i]
@@ -102,10 +115,15 @@ run_sim2 <- function(
 
     # Store risks, contrasts, and estimated variances.
     result <- rbind(
-      aipw, .eta_result(dml$eta_hat[1], dml$eta_hat[2], dml$eta_hat_cov)
+      parametric,
+      .eta_result(dml$eta_hat[1], dml$eta_hat[2], dml$eta_hat_cov)
     )
-    result$Estimator <- c("AIPW", "DML")
-    result$Version <- "Proposed"
+    result$Estimator <- c(
+      "G-Formula", "IPW", "AIPW",
+      "G-Formula", "IPW", "AIPW", "AIPW"
+    )
+    result$Version <- c(rep("Proposed", 3L), rep("Naive", 3L), "Proposed")
+    result$Model <- c(rep("Parametric", 6L), "Nonparametric")
     result$rdhat <- result$etahat_1 - result$etahat_0
     result$rrhat <- result$etahat_1 / result$etahat_0
     result$var_rd <- result$cov_00 + result$cov_11 - 2 * result$cov_01
