@@ -1,8 +1,6 @@
-#' Proposed cross-fitted estimators
+#' Proposed cross-fitted AIPW estimator
 #'
-#' The default AIPW estimator uses cross-fitted nuisance models.
-#' G-formula uses outcome regressions only; IPW uses selection regressions only.
-#' These two alternatives return point estimates without standard errors.
+#' Fits the Proposed AIPW estimator using cross-fitted XGBoost nuisance models.
 #'
 #' @param dat Combined data frame containing:
 #' \itemize{
@@ -24,8 +22,6 @@
 #'   `list(nrounds = 100L, max_depth = 6L)`.
 #' @param random_seed Seed set before splitting `S`-by-`A` stratified
 #'   individual-level folds and fitting the nuisance models.
-#' @param estimator `"aipw"` (default), `"gformula"`, or `"ipw"`.
-#'
 #' @details Uses fold-specific Hajek normalization and the equal average of
 #'   the fold estimates. Selection odds are `zeta / (1 - zeta)`. Covariance
 #'   uses the mean of fold-level individual contribution covariances divided
@@ -37,18 +33,16 @@
 #' @return A list containing:
 #' \itemize{
 #'   \item `eta_hat`: risks under control and treatment;
-#'   \item `eta_hat_cov`: their two-by-two covariance matrix (`NA` except AIPW);
+#'   \item `eta_hat_cov`: their two-by-two covariance matrix;
 #'   \item `fold_estimates`: risks and covariance entries for each fold;
 #'   \item `dat`: input data plus folds, `Q`, out-of-fold outcome predictions,
 #'     selection probabilities, and selection odds.
 #' }
 #' @export
 dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
-                    arguments = NULL, random_seed = 1L,
-                    estimator = c("aipw", "gformula", "ipw")) {
+                    arguments = NULL, random_seed = 1L) {
 
   # Split individuals within each sample and treatment arm.
-  estimator <- match.arg(estimator)
   set.seed(random_seed)
   dat <- as.data.frame(dat)
   dat$fold <- 0L
@@ -76,60 +70,38 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     selection0 <- training[(training$Q == 1 & training$A == 0) | training$S == 0, ]
     selection1 <- training[(training$Q == 1 & training$A == 1) | training$S == 0, ]
 
-    # Fit only the nuisance models required by the selected estimator.
-    if (estimator != "ipw") {
-      mu0 <- nonpar_est(
-        observed0[mu_covariates], observed0$Y, arguments
-      )
-      mu1 <- nonpar_est(
-        observed1[mu_covariates], observed1$Y, arguments
-      )
-    }
-    if (estimator != "gformula") {
-      Q0 <- nonpar_est(
-        selection0[pi_covariates], selection0$Q, arguments, selection0$wt
-      )
-      Q1 <- nonpar_est(
-        selection1[pi_covariates], selection1$Q, arguments, selection1$wt
-      )
-    }
+    # Fit the four nuisance models required by Proposed AIPW.
+    mu0 <- nonpar_est(
+      observed0[mu_covariates], observed0$Y, arguments
+    )
+    mu1 <- nonpar_est(
+      observed1[mu_covariates], observed1$Y, arguments
+    )
+    Q0 <- nonpar_est(
+      selection0[pi_covariates], selection0$Q, arguments, selection0$wt
+    )
+    Q1 <- nonpar_est(
+      selection1[pi_covariates], selection1$Q, arguments, selection1$wt
+    )
 
     # Predict only on the held-out fold.
     predict_mu <- test$S == 0 | test$R == 1
     control <- test$Q == 1 & test$A == 0
     treated <- test$Q == 1 & test$A == 1
     auxiliary <- test$S == 0
-    if (estimator != "ipw") {
-      test$muhat_0[predict_mu] <- nonpar_pred(
-        mu0, test[predict_mu, mu_covariates, drop = FALSE]
-      )
-      test$muhat_1[predict_mu] <- nonpar_pred(
-        mu1, test[predict_mu, mu_covariates, drop = FALSE]
-      )
-    }
-    if (estimator != "gformula") {
-      test$Q_prob[control] <- nonpar_pred(
-        Q0, test[control, pi_covariates, drop = FALSE]
-      )
-      test$Q_prob[treated] <- nonpar_pred(
-        Q1, test[treated, pi_covariates, drop = FALSE]
-      )
-      test$pihat <- test$Q_prob / (1 - test$Q_prob)
-    }
-
-    # G-formula and IPW have their own point estimates, not AIPW variances.
-    if (estimator != "aipw") {
-      if (estimator == "gformula") {
-        eta0 <- weighted.mean(test$muhat_0[auxiliary], test$wt[auxiliary])
-        eta1 <- weighted.mean(test$muhat_1[auxiliary], test$wt[auxiliary])
-      } else {
-        eta0 <- weighted.mean(test$Y[control], 1 / test$pihat[control])
-        eta1 <- weighted.mean(test$Y[treated], 1 / test$pihat[treated])
-      }
-      fold_estimates[k, ] <- c(eta0, eta1, NA_real_, NA_real_, NA_real_)
-      dat[dat$fold == k, ] <- test
-      next
-    }
+    test$muhat_0[predict_mu] <- nonpar_pred(
+      mu0, test[predict_mu, mu_covariates, drop = FALSE]
+    )
+    test$muhat_1[predict_mu] <- nonpar_pred(
+      mu1, test[predict_mu, mu_covariates, drop = FALSE]
+    )
+    test$Q_prob[control] <- nonpar_pred(
+      Q0, test[control, pi_covariates, drop = FALSE]
+    )
+    test$Q_prob[treated] <- nonpar_pred(
+      Q1, test[treated, pi_covariates, drop = FALSE]
+    )
+    test$pihat <- test$Q_prob / (1 - test$Q_prob)
 
     # Fold-specific Hajek denominators and auxiliary weight total.
     h0 <- sum(1 / test$pihat[control])
@@ -155,10 +127,6 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     c(average["cov_00"], average["cov_01"],
       average["cov_01"], average["cov_11"]), nrow = 2
   )
-  if (estimator != "aipw") {
-    warning("Cross-fitted G-formula/IPW returns point estimates only; standard errors and confidence intervals are not implemented.",
-            call. = FALSE)
-  }
   list(
     eta_hat = average[c("etahat_0", "etahat_1")],
     eta_hat_cov = covariance,

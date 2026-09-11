@@ -1,7 +1,7 @@
 #' Print a Crown fit
 #'
 #' Displays the four causal estimates for each estimator and version.
-#' XGBoost fits include a note giving the number of cross-fitting folds.
+#' Nonparametric fits include a note giving the number of cross-fitting folds.
 #'
 #' @param x A `crown_fit` object returned by [crown()].
 #' @param digits Number of significant digits used to format the printed table.
@@ -32,11 +32,8 @@ print.crown_fit <- function(x, digits = 3, ...) {
   cat("Crown causal estimates\n\n")
   print(output, row.names = FALSE, digits = digits)
   if (!is.null(x$dml)) {
-    cat("\nXGBoost nuisance models;", nrow(x$dml$fold_estimates),
+    cat("\nNonparametric XGBoost nuisance models;", nrow(x$dml$fold_estimates),
         "folds of cross-fitting used.\n")
-    if (all(is.na(estimates$std_error))) {
-      cat("Point estimates only; standard errors and confidence intervals are unavailable.\n")
-    }
   }
   invisible(x)
 }

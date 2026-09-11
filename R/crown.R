@@ -1,7 +1,8 @@
 #' Cluster-Randomized Trial Analysis with Outcomes Weighted for Nonresponse
 #'
 #' G-formula, IPW, and AIPW estimators combine trial outcomes with auxiliary
-#' covariates using logistic regression or cross-fitted machine learning.
+#' covariates using parametric regression or proposed cross-fitted machine
+#' learning.
 #' @importFrom numDeriv jacobian
 #' @importFrom stats as.formula binomial coef cov glm model.frame model.matrix model.response plogis predict weighted.mean
 #' @importFrom utils tail
@@ -11,7 +12,7 @@
 
 #' Analyze a trial and an auxiliary sample
 #'
-#' Runs one selected estimator using logistic regression or cross-fitted XGBoost.
+#' Runs one supported parametric or nonparametric analysis.
 #'
 #' @param trial_data,auxiliary_data Data frames for the trial and auxiliary sample.
 #' @param outcome Binary outcome column; required for uncensored responders.
@@ -26,33 +27,35 @@
 #'   auxiliary covariates; naive estimators use trial responders alone.
 #' @param estimator `"aipw"` (default), `"gformula"`, or `"ipw"`.
 #'   Only the selected estimator and its required nuisance models are fitted.
-#' @param model `"xgboost"` (default) uses cross-fitting; `"logistic"` uses
-#'   logistic regressions. Only Proposed AIPW has XGBoost standard errors.
+#' @param model `"nonparametric"` (default) uses cross-fitted XGBoost;
+#'   `"parametric"` uses logistic regressions. Nonparametric estimation is
+#'   supported only for Proposed AIPW.
 #' @param auxiliary_weight Optional auxiliary sampling-weight column. Omit for
 #'   equal weights. Supplied weights are normalized to have mean one.
 #' @param treatment_values Control and treatment values, in that order.
-#' @param outcome_formula,propensity_formula,censoring_formula Optional logistic
+#' @param outcome_formula,propensity_formula,censoring_formula Optional parametric
 #'   formulas using standardized names `Y`, `A`, `Q`, `C`, and the covariates.
 #'   Defaults are `Y ~ A * (covariates)`, `Q ~ covariates`, and `C ~ covariates`.
-#' @param K Number of outer cross-fitting folds (default 5); used only by
-#'   XGBoost, not tuning CV.
+#' @param K Number of outer cross-fitting folds (default 5); used only by the
+#'   nonparametric model, not tuning CV.
 #' @param arguments Optional XGBoost settings, e.g., `list(nrounds = 100L)`;
-#'   used only by XGBoost.
-#' @param random_seed Seed set before creating folds and fitting XGBoost.
+#'   used only by the nonparametric model.
+#' @param random_seed Seed set before creating folds and fitting the
+#'   nonparametric model.
 #'
-#' @details Logistic estimators use sandwich covariance. Proposed AIPW with
-#'   XGBoost uses cross-fitting and provides standard errors. Other XGBoost
-#'   combinations return point estimates only.
+#' @details Parametric estimators use logistic nuisance models and sandwich
+#'   covariance. Nonparametric estimation is the Proposed cross-fitted AIPW
+#'   estimator with XGBoost nuisance models. Unsupported combinations stop
+#'   before any models are fitted.
 #'
 #' @return A `crown_fit` list containing:
 #' \itemize{
 #'   \item `estimates`: risks under control and treatment, RD, RR, standard
-#'     errors, and 95 percent Wald confidence intervals (standard errors and
-#'     intervals are `NA` for XGBoost except Proposed AIPW);
+#'     errors, and 95 percent Wald confidence intervals;
 #'   \item `variance`: variances on the same parameter scales;
 #'   \item `covariance`: one two-by-two risk covariance matrix per estimator;
 #'   \item `dml`: fold-specific estimates and out-of-fold predictions, included
-#'     only for `model = "xgboost"`.
+#'     only for `model = "nonparametric"`.
 #' }
 #' @export
 crown <- function(
@@ -66,7 +69,7 @@ crown <- function(
     covariates,
     version = c("proposed", "naive"),
     estimator = c("aipw", "gformula", "ipw"),
-    model = c("xgboost", "logistic"),
+    model = c("nonparametric", "parametric"),
     auxiliary_weight = NULL,
     treatment_values = c(0, 1),
     outcome_formula = NULL,
@@ -80,6 +83,18 @@ crown <- function(
   model <- match.arg(model)
   estimator <- match.arg(estimator)
 
+  if (model == "nonparametric" &&
+      (version != "proposed" || estimator != "aipw")) {
+    stop(
+      "Unsupported combination. Available combinations are:\n",
+      "  - model = 'parametric' with version = 'proposed' or 'naive' and ",
+      "estimator = 'gformula', 'ipw', or 'aipw';\n",
+      "  - model = 'nonparametric' with version = 'proposed' and ",
+      "estimator = 'aipw'.",
+      call. = FALSE
+    )
+  }
+
   # Prepare the combined trial and auxiliary data.
   data <- .prepare_crown_data(
     trial_data, auxiliary_data, outcome, treatment, response, censoring,
@@ -87,9 +102,9 @@ crown <- function(
   )
 
   dml <- NULL
-  if (model == "logistic") {
+  if (model == "parametric") {
 
-    # Specify the logistic outcome and weighting models.
+    # Specify the parametric outcome and weighting models.
     covariate_terms <- paste(sprintf("`%s`", covariates), collapse = " + ")
     if (is.null(outcome_formula)) {
       outcome_formula <- as.formula(paste0("Y ~ A * (", covariate_terms, ")"))
@@ -113,15 +128,10 @@ crown <- function(
 
   } else {
 
-    # Fit the selected cross-fitted estimator.
-    if (version == "proposed") {
-      dml <- dml_fit(
-        data, covariates, covariates, K, arguments, random_seed,
-        estimator = estimator
-      )
-    } else {
-      dml <- .naive_xgboost(data, covariates, K, arguments, random_seed, estimator)
-    }
+    # Fit the supported Proposed cross-fitted AIPW estimator.
+    dml <- dml_fit(
+      data, covariates, covariates, K, arguments, random_seed
+    )
     result <- .eta_result(
       dml$eta_hat[[1]], dml$eta_hat[[2]], dml$eta_hat_cov
     )

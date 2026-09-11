@@ -2,7 +2,7 @@
 % Please edit documentation in R/dml_fit.R
 \name{dml_fit}
 \alias{dml_fit}
-\title{Proposed cross-fitted estimators}
+\title{Proposed cross-fitted AIPW estimator}
 \usage{
 dml_fit(
   dat,
@@ -10,8 +10,7 @@ dml_fit(
   pi_covariates,
   K = 5L,
   arguments = NULL,
-  random_seed = 1L,
-  estimator = c("aipw", "gformula", "ipw")
+  random_seed = 1L
 )
 }
 \arguments{
@@ -39,23 +38,19 @@ covariates; do not include \code{A}, \code{S}, \code{R}, \code{C}, \code{Y}, or 
 
 \item{random_seed}{Seed set before splitting \code{S}-by-\code{A} stratified
 individual-level folds and fitting the nuisance models.}
-
-\item{estimator}{\code{"aipw"} (default), \code{"gformula"}, or \code{"ipw"}.}
 }
 \value{
 A list containing:
 \itemize{
 \item \code{eta_hat}: risks under control and treatment;
-\item \code{eta_hat_cov}: their two-by-two covariance matrix (\code{NA} except AIPW);
+\item \code{eta_hat_cov}: their two-by-two covariance matrix;
 \item \code{fold_estimates}: risks and covariance entries for each fold;
 \item \code{dat}: input data plus folds, \code{Q}, out-of-fold outcome predictions,
 selection probabilities, and selection odds.
 }
 }
 \description{
-The default AIPW estimator uses cross-fitted nuisance models.
-G-formula uses outcome regressions only; IPW uses selection regressions only.
-These two alternatives return point estimates without standard errors.
+Fits the Proposed AIPW estimator using cross-fitted XGBoost nuisance models.
 }
 \details{
 Uses fold-specific Hajek normalization and the equal average of

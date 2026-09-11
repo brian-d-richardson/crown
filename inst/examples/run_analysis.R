@@ -23,7 +23,7 @@ fit <- crown(
   covariates = c("X1", "X2", "W1", "W2"),
   version = "proposed",       # "proposed" or "naive"
   estimator = "aipw",        # "aipw", "gformula", or "ipw"
-  model = "xgboost",         # "xgboost" or "logistic"
+  model = "nonparametric",   # "nonparametric" or "parametric"
   auxiliary_weight = "sampling_weight"
 )
 

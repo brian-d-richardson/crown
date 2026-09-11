@@ -18,5 +18,5 @@
 }
 \description{
 Displays the four causal estimates for each estimator and version.
-XGBoost fits include a note giving the number of cross-fitting folds.
+Nonparametric fits include a note giving the number of cross-fitting folds.
 }

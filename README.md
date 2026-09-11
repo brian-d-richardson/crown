@@ -30,7 +30,8 @@ trial <- crown_example[crown_example$S == 1, ]
 auxiliary <- crown_example[crown_example$S == 0, ]
 ```
 
-Run the default analysis, Proposed AIPW with cross-fitted XGBoost:
+Run the default analysis, Proposed AIPW with cross-fitted nonparametric
+models (currently XGBoost):
 
 ```r
 fit <- crown(
@@ -44,7 +45,7 @@ fit <- crown(
   covariates = c("X1", "X2", "W1", "W2"),
   version = "proposed",
   estimator = "aipw",
-  model = "xgboost",
+  model = "nonparametric",
   auxiliary_weight = "sampling_weight"
 )
 
@@ -69,23 +70,25 @@ The main choices are made directly in `crown()`:
 |---|---|---|
 | `version` | `"proposed"` | `"proposed"`, `"naive"` |
 | `estimator` | `"aipw"` | `"aipw"`, `"gformula"`, `"ipw"` |
-| `model` | `"xgboost"` | `"xgboost"`, `"logistic"` |
+| `model` | `"nonparametric"` | `"nonparametric"`, `"parametric"` |
 
 `proposed` combines trial outcomes with auxiliary covariates to adjust for
 nonresponse and censoring. `naive` uses trial responders alone.
 
-All choices return point estimates. Standard errors and 95% confidence intervals
-are currently available for:
+The supported combinations are:
 
-| Model | Version | Estimator | Auxiliary weight | CI |
-|---|---|---|---|---|
-| Logistic | Proposed | G-formula, IPW, or AIPW | With or without | Yes |
-| Logistic | Naive | G-formula, IPW, or AIPW | Not used | Yes |
-| XGBoost | Proposed | AIPW | With or without | Yes |
-| XGBoost | Proposed | G-formula or IPW | With or without | No |
-| XGBoost | Naive | G-formula, IPW, or AIPW | Not used | No |
+| Model | Version | Estimator | Auxiliary weight |
+|---|---|---|---|
+| Parametric | Proposed | G-formula, IPW, or AIPW | With or without |
+| Parametric | Naive | G-formula, IPW, or AIPW | Not used |
+| Nonparametric | Proposed | AIPW | With or without |
 
-XGBoost uses cross-fitting. `K = 5L` sets the number of folds. Use `arguments`
+All supported combinations return standard errors and 95% confidence
+intervals. The nonparametric model uses cross-fitted XGBoost and is available
+only for Proposed AIPW. Unsupported combinations stop with an error that lists
+the available choices.
+
+For the nonparametric model, `K = 5L` sets the number of folds. Use `arguments`
 to pass XGBoost settings and `random_seed` to reproduce the fold split.
 
 ## Prepare your data
@@ -142,7 +145,8 @@ source("simulation/sim_scripts/ss2.R")
 ```
 
 - Simulation 1 compares Naive and Proposed parametric G-formula, IPW, and AIPW.
-- Simulation 2 compares Proposed parametric AIPW with cross-fitted XGBoost AIPW.
+- Simulation 2 compares Proposed parametric AIPW with Proposed cross-fitted
+  nonparametric AIPW.
 - Both use `(500, 500)`, `(500, 5000)`, `(5000, 500)`, and `(5000, 5000)` for
   `(n_trial, n_auxiliary)`.
 - Both currently run 20 Monte Carlo replicates per sample-size combination.
