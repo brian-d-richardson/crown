@@ -1,11 +1,14 @@
 # Import data
 
+library(devtools)
+
 package_dir <- normalizePath(
   file.path(dirname(sys.frame(1)$ofile), "..", "..")
 )
-devtools::load_all(package_dir)
+load_all(package_dir)
 
 data(crown_example)
+print(head(crown_example, 5), row.names = FALSE)
 
 # Split trial and auxiliary samples
 # The data contain 20 clusters and 100,000 observations in total.

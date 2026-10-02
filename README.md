@@ -6,17 +6,62 @@ ratios when trial outcomes are affected by nonresponse or censoring.
 
 ## Installation
 
-Install from the package source directory:
+Install the development version from GitHub:
 
 ```r
-install.packages("remotes")
-remotes::install_local(".")
+install.packages("devtools")
+library(devtools)
+install_github("brian-d-richardson/crown", ref = "crown-1.0.0")
+library(crown)
 ```
 
-## Quick start
+## Supported analyses
+
+| Analysis | `version` | `estimator` | `model` |
+|---|---|---|---|
+| Naive G-formula | `"naive"` | `"gformula"` | `"logistic"` |
+| Proposed G-formula | `"proposed"` | `"gformula"` | `"logistic"` |
+| Naive IPW | `"naive"` | `"ipw"` | `"logistic"` |
+| Proposed IPW | `"proposed"` | `"ipw"` | `"logistic"` |
+| Naive AIPW | `"naive"` | `"aipw"` | `"logistic"` |
+| Proposed AIPW | `"proposed"` | `"aipw"` | `"logistic"` |
+| Proposed DML | `"proposed"` | `"aipw"` | `"xgboost"` |
+
+These are the only supported combinations.
+
+## Data requirements
+
+| Variable | Trial | Auxiliary |
+|---|---|---|
+| Cluster ID | Required | Required; must match a trial cluster |
+| Treatment | Required and constant within cluster | Not required |
+| Response indicator | Required | Not required |
+| Censoring indicator | Required | Not required |
+| Outcome | Required for uncensored responders | Not required |
+| Covariates | Required | Same covariates required |
+| Sampling weight | Not used | Optional |
+
+Pass the trial and auxiliary samples as separate data frames. If auxiliary
+sampling weights are unequal, provide the weight-column name through
+`auxiliary_weight`; otherwise leave it as `NULL`.
+
+## Application
+
+The package includes `crown_example`, a synthetic dataset with 50,000 trial
+participants and 50,000 auxiliary participants across 20 clusters. Its first
+five participants are:
+
+| id | cluster | S | A | R | C | Y | X1 | X2 | W1 | W2 | sampling_weight |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 11 | 1 | 1 | 1 | 0 | 1 | -2.1958 | 1 | 1 | 0.3342 | 1 |
+| 2 | 11 | 1 | 1 | 1 | 0 | 0 | -2.1958 | 1 | 0 | 0.8751 | 1 |
+| 3 | 11 | 1 | 1 | 1 | 0 | 0 | -2.1958 | 1 | 1 | -0.0489 | 1 |
+| 4 | 11 | 1 | 1 | 0 | NA | NA | -2.1958 | 1 | 1 | -0.9554 | 1 |
+| 5 | 11 | 1 | 1 | 1 | 0 | 0 | -2.1958 | 1 | 0 | -0.2128 | 1 |
+
+Select an analysis through `version`, `estimator`, and `model`:
 
 ```r
-library(crown)
 data(crown_example)
 
 trial <- crown_example[crown_example$S == 1, ]
@@ -31,89 +76,82 @@ fit <- crown(
   censoring = "C",
   cluster = "cluster",
   covariates = c("X1", "X2", "W1", "W2"),
+  version = "proposed",
+  estimator = "aipw",
+  model = "xgboost",
   auxiliary_weight = "sampling_weight"
 )
 
 summary(fit)
 ```
 
-The default is Proposed DML: the Proposed AIPW estimator with cross-fitted
-XGBoost nuisance models.
+This call fits Proposed DML and returns:
 
-## Supported analyses
-
-| Analysis | `version` | `estimator` | `model` |
-|---|---|---|---|
-| Naive G-formula | `"naive"` | `"gformula"` | `"logistic"` |
-| Proposed G-formula | `"proposed"` | `"gformula"` | `"logistic"` |
-| Naive IPW | `"naive"` | `"ipw"` | `"logistic"` |
-| Proposed IPW | `"proposed"` | `"ipw"` | `"logistic"` |
-| Naive AIPW | `"naive"` | `"aipw"` | `"logistic"` |
-| Proposed AIPW | `"proposed"` | `"aipw"` | `"logistic"` |
-| Proposed DML | `"proposed"` | `"aipw"` | `"xgboost"` |
-
-These are the only supported combinations. Use `K` to set the number of DML
-cross-fitting folds and `arguments` to pass XGBoost settings.
-
-## Data requirements
-
-| Variable | Trial | Auxiliary |
-|---|---|---|
-| Cluster ID | Required | Required; must match a trial cluster |
-| Treatment | Required and constant within cluster | Inherited from the trial cluster |
-| Response indicator | Required | Not required |
-| Censoring indicator | Required | Not required |
-| Outcome | Required for uncensored responders | Not required |
-| Covariates | Required | Same covariates required |
-| Sampling weight | Not used | Optional |
-
-Pass the trial and auxiliary samples as separate data frames. If auxiliary
-sampling weights are unequal, provide the weight-column name through
-`auxiliary_weight`; otherwise leave it as `NULL`.
+| Parameter | Estimate | Standard error | 95% CI |
+|---|---:|---:|---:|
+| Mean under control | 0.272 | 0.005 | [0.263, 0.281] |
+| Mean under treatment | 0.404 | 0.006 | [0.392, 0.416] |
+| Risk difference | 0.132 | 0.007 | [0.118, 0.147] |
+| Risk ratio | 1.486 | 0.033 | [1.422, 1.550] |
 
 ## Simulations
 
-Simulation 1 evaluates Naive and Proposed parametric estimators under correct
-and incorrect nuisance-model specifications, together with Proposed DML.
-Simulation 2 evaluates all seven estimators under a nonlinear data-generating
-process; its main figures show the four Proposed estimators.
-
-For a local run, set `mc_reps` near the top of the script and click Source in
-RStudio or VS Code:
+The simulation scripts run 50 Monte Carlo replicates per sample-size setting by
+default. Change `mc_reps` near the top of each script for a different run:
 
 ```r
 source("simulation/sim_scripts/ss1.R")
 source("simulation/sim_scripts/ss2.R")
 ```
 
-Local results are saved as `sd_local.csv`; the fitted results are returned in
-the `simulation` object, and the three figures are written to the corresponding
-`sim_figures/sim1/local/` or `sim_figures/sim2/local/` directory.
-
-The repository retains 10,000 Monte Carlo replicates for each simulation in
-`simulation/sim_data/`. Run the analysis scripts to reproduce the figures:
-
-```sh
-Rscript simulation/sim_analysis/sim1_analysis.R
-Rscript simulation/sim_analysis/sim2_analysis.R
-```
+Each script saves `sd_local.csv` and produces point-estimate, variance, and
+confidence-interval coverage figures. The figures below use the 10,000
+replicates per setting stored in `simulation/sim_data/`.
 
 ### Simulation 1
 
-<p align="center">
+Simulation 1 uses a 20-cluster randomized trial and an auxiliary sample with a
+different covariate distribution. Response, censoring, and binary outcomes
+depend on treatment and covariates. Correct and misspecified outcome and
+selection models are compared across trial and auxiliary sample sizes of 500
+and 5,000.
+
+<p align="center"><strong>Parameter estimates</strong><br>
   <img src="simulation/sim_figures/sim1/sim1_estimates.png"
        alt="Simulation 1 estimates" width="760">
 </p>
 
+<p align="center"><strong>Variance estimates</strong><br>
+  <img src="simulation/sim_figures/sim1/sim1_variance.png"
+       alt="Simulation 1 variances" width="760">
+</p>
+
+<p align="center"><strong>Confidence-interval coverage</strong><br>
+  <img src="simulation/sim_figures/sim1/sim1_confidence.png"
+       alt="Simulation 1 confidence-interval coverage" width="760">
+</p>
+
 ### Simulation 2
 
-<p align="center">
+Simulation 2 uses the same cluster and sample-size settings but makes the
+response and outcome mechanisms nonlinear through squared and sinusoidal
+covariate effects. It evaluates all seven supported estimators; the figures
+show the four Proposed estimators.
+
+<p align="center"><strong>Parameter estimates</strong><br>
   <img src="simulation/sim_figures/sim2/sim2_estimates.png"
        alt="Simulation 2 estimates" width="1000">
 </p>
 
-Variance and confidence-interval coverage figures are stored in the same
-`sim1` and `sim2` figure directories.
+<p align="center"><strong>Variance estimates</strong><br>
+  <img src="simulation/sim_figures/sim2/sim2_variance.png"
+       alt="Simulation 2 variances" width="1000">
+</p>
+
+<p align="center"><strong>Confidence-interval coverage</strong><br>
+  <img src="simulation/sim_figures/sim2/sim2_confidence.png"
+       alt="Simulation 2 confidence-interval coverage" width="1000">
+</p>
 
 ## Reference
 
