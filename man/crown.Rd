@@ -15,7 +15,7 @@ crown(
   covariates,
   version = c("proposed", "naive"),
   estimator = c("aipw", "gformula", "ipw"),
-  model = c("nonparametric", "parametric"),
+  model = c("xgboost", "logistic"),
   auxiliary_weight = NULL,
   treatment_values = c(0, 1),
   outcome_formula = NULL,
@@ -47,29 +47,27 @@ cluster-level covariates needed for conditional independence.}
 auxiliary covariates; naive estimators use trial responders alone.}
 
 \item{estimator}{\code{"aipw"} (default), \code{"gformula"}, or \code{"ipw"}.
-Only the selected estimator and its required nuisance models are fitted.}
+Logistic regression supports all three estimators and both versions.}
 
-\item{model}{\code{"nonparametric"} (default) uses cross-fitted XGBoost;
-\code{"parametric"} uses logistic regressions. Nonparametric estimation is
-supported only for Proposed AIPW.}
+\item{model}{\code{"xgboost"} (default) or \code{"logistic"}. XGBoost is supported
+only for Proposed AIPW, which is reported as DML.}
 
 \item{auxiliary_weight}{Optional auxiliary sampling-weight column. Omit for
 equal weights. Supplied weights are normalized to have mean one.}
 
 \item{treatment_values}{Control and treatment values, in that order.}
 
-\item{outcome_formula, propensity_formula, censoring_formula}{Optional parametric
+\item{outcome_formula, propensity_formula, censoring_formula}{Optional logistic
 formulas using standardized names \code{Y}, \code{A}, \code{Q}, \code{C}, and the covariates.
 Defaults are \code{Y ~ A * (covariates)}, \code{Q ~ covariates}, and \code{C ~ covariates}.}
 
-\item{K}{Number of outer cross-fitting folds (default 5); used only by the
-nonparametric model, not tuning CV.}
+\item{K}{Number of outer cross-fitting folds (default 5); used only by
+XGBoost, not tuning CV.}
 
 \item{arguments}{Optional XGBoost settings, e.g., \code{list(nrounds = 100L)};
-used only by the nonparametric model.}
+used only by XGBoost.}
 
-\item{random_seed}{Seed set before creating folds and fitting the
-nonparametric model.}
+\item{random_seed}{Seed set before creating folds and fitting XGBoost.}
 }
 \value{
 A \code{crown_fit} list containing:
@@ -78,16 +76,16 @@ A \code{crown_fit} list containing:
 errors, and 95 percent Wald confidence intervals;
 \item \code{variance}: variances on the same parameter scales;
 \item \code{covariance}: one two-by-two risk covariance matrix per estimator;
+\item \code{model}: the nuisance-model type;
 \item \code{dml}: fold-specific estimates and out-of-fold predictions, included
-only for \code{model = "nonparametric"}.
+only for \code{model = "xgboost"}.
 }
 }
 \description{
-Runs one supported parametric or nonparametric analysis.
+Runs one selected estimator using logistic regression or cross-fitted XGBoost.
 }
 \details{
-Parametric estimators use logistic nuisance models and sandwich
-covariance. Nonparametric estimation is the Proposed cross-fitted AIPW
-estimator with XGBoost nuisance models. Unsupported combinations stop
-before any models are fitted.
+The seven supported combinations are Naive and Proposed
+G-formula, IPW, and AIPW with logistic nuisance models, plus Proposed DML
+with cross-fitted XGBoost nuisance models.
 }

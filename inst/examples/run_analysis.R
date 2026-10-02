@@ -1,6 +1,9 @@
 # Import data
 
-library(crown)
+package_dir <- normalizePath(
+  file.path(dirname(sys.frame(1)$ofile), "..", "..")
+)
+devtools::load_all(package_dir)
 
 data(crown_example)
 
@@ -11,6 +14,9 @@ trial <- crown_example[crown_example$S == 1, ]
 auxiliary <- crown_example[crown_example$S == 0, ]
 
 # Fit Crown
+# Supported combinations:
+# Logistic: naive/proposed G-formula, IPW, and AIPW.
+# XGBoost: proposed AIPW (DML) only.
 
 fit <- crown(
   trial_data = trial,
@@ -21,9 +27,9 @@ fit <- crown(
   censoring = "C",
   cluster = "cluster",
   covariates = c("X1", "X2", "W1", "W2"),
-  version = "proposed",       # "proposed" or "naive"
-  estimator = "aipw",        # "aipw", "gformula", or "ipw"
-  model = "nonparametric",   # "nonparametric" or "parametric"
+  version = "proposed",
+  estimator = "aipw",
+  model = "xgboost",
   auxiliary_weight = "sampling_weight"
 )
 

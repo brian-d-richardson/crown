@@ -1,8 +1,8 @@
-test_that("the parametric interface defaults to proposed AIPW only", {
+test_that("the logistic interface defaults to proposed AIPW only", {
   d <- example_data()
   local_mocked_bindings(dml_fit = function(...) stop("DML should not run"))
   fit <- crown(subset(d, S == 1), subset(d, S == 0),
-    "Y", "A", "R", "C", "cluster", c("X", "W"), model = "parametric")
+    "Y", "A", "R", "C", "cluster", c("X", "W"), model = "logistic")
   expect_s3_class(fit, "crown_fit")
   expect_equal(nrow(fit$estimates), 4L)
   expect_length(fit$covariance, 1L)
@@ -11,14 +11,16 @@ test_that("the parametric interface defaults to proposed AIPW only", {
   expect_null(fit$dml)
   expect_true(all(is.finite(fit$estimates$std_error)))
   expect_output(print(fit), "Crown causal estimates")
+  expect_output(print(fit), "Logistic", fixed = TRUE)
   expect_false(any(grepl("cross-fitting", capture.output(print(fit)), fixed = TRUE)))
   expect_equal(nrow(summary(fit)), 4L)
+  expect_setequal(summary(fit)$model, "Logistic")
   for (name in names(fit$covariance)) {
     expect_equal(fit$covariance[[name]], t(fit$covariance[[name]]))
   }
 })
 
-test_that("each parametric version agrees with direct fits and uses its formulas", {
+test_that("each logistic version agrees with direct fits and uses its formulas", {
   d <- example_data()
   d$wt[d$S == 0] <- seq(.5, 1.5, length.out = sum(d$S == 0))
   for (version in c("naive", "proposed")) {
@@ -32,7 +34,7 @@ test_that("each parametric version agrees with direct fits and uses its formulas
     for (estimator in c("gformula", "ipw", "aipw")) {
       fit <- crown(subset(d, S == 1), subset(d, S == 0),
         "Y", "A", "R", "C", "cluster", c("X", "W"),
-        version = version, model = "parametric", auxiliary_weight = "wt",
+        version = version, model = "logistic", auxiliary_weight = "wt",
         outcome_formula = Y ~ A * W, propensity_formula = Q ~ W,
         censoring_formula = C ~ W, estimator = estimator)
       expected <- .format_crown_results(rows[paste(estimator, version, sep = "_")])
@@ -42,7 +44,7 @@ test_that("each parametric version agrees with direct fits and uses its formulas
   }
 })
 
-test_that("the default interface runs only proposed nonparametric AIPW", {
+test_that("the default interface runs only proposed cross-fitted XGBoost DML", {
   d <- example_data()
   d[d$S == 1 & d$R == 0, c("X", "W")] <- NA_real_
   combined <- .prepare_crown_data(subset(d, S == 1), subset(d, S == 0),
@@ -60,7 +62,7 @@ test_that("the default interface runs only proposed nonparametric AIPW", {
     arguments = list(nrounds = 3L), random_seed = 10L)
   explicit <- crown(subset(d, S == 1), subset(d, S == 0),
     "Y", "A", "R", "C", "cluster", c("X", "W"),
-    version = "proposed", model = "nonparametric", estimator = "aipw", K = 2L,
+    version = "proposed", model = "xgboost", estimator = "aipw", K = 2L,
     arguments = list(nrounds = 3L), random_seed = 10L)
   expect_equal(fit, explicit)
   expect_equal(fit$dml, expected)
@@ -68,10 +70,11 @@ test_that("the default interface runs only proposed nonparametric AIPW", {
   expect_length(fit$covariance, 1L)
   expect_setequal(fit$estimates$estimator, "AIPW")
   expect_setequal(fit$estimates$version, "Proposed")
-  expect_output(print(fit), "AIPW")
+  expect_output(print(fit), "DML")
+  expect_output(print(fit), "XGBoost", fixed = TRUE)
   expect_output(print(fit), "2 folds of cross-fitting used", fixed = TRUE)
-  expect_false(any(grepl("DML", capture.output(print(fit)), fixed = TRUE)))
-  expect_setequal(summary(fit)$estimator, "AIPW")
+  expect_setequal(summary(fit)$estimator, "DML")
+  expect_setequal(summary(fit)$model, "XGBoost")
   expect_named(fit$covariance, "aipw_proposed")
   expected_row <- .eta_result(expected$eta_hat[1], expected$eta_hat[2],
                              expected$eta_hat_cov)
@@ -83,8 +86,8 @@ test_that("the default interface runs only proposed nonparametric AIPW", {
 test_that("unsupported choices do not silently select a different method", {
   expect_error(crown(version = "unknown"), "arg")
   expect_error(crown(model = "unknown"), "arg")
-  expect_error(crown(model = "xgboost"), "arg")
-  expect_error(crown(model = "logistic"), "arg")
+  expect_error(crown(model = "parametric"), "arg")
+  expect_error(crown(model = "nonparametric"), "arg")
   expect_error(crown(estimator = "unknown"), "arg")
 })
 

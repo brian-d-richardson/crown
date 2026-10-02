@@ -1,4 +1,4 @@
-# Simulation 2: parametric AIPW and cross-fitted DML -------------------------
+# Simulation 2: six parametric estimators and cross-fitted DML ---------------
 
 # Generate one trial and one auxiliary sample from the nonlinear DGP.
 generate_sim2_data <- function(
@@ -70,16 +70,66 @@ generate_sim2_data <- function(
   )
 }
 
+# Fit the seven complete estimators used in Simulation 2.
+fit_sim2_estimators <- function(data, K = 5L, arguments = NULL, random_seed = 1L) {
+  covariates <- c("X1", "W1", "W2", "W3")
+  outcome_formula <- Y ~ A * (X1 + W1 + W2 + W3)
+  censoring_formula <- C ~ X1 + W1 + W2 + W3
+  propensity_formula <- Q ~ X1 + W1 + W2 + W3
+
+  dml <- dml_fit(
+    data, covariates, covariates, K,
+    arguments, random_seed = random_seed
+  )
+  result <- rbind(
+    fit_gformula(data, outcome_formula, "naive"),
+    fit_gformula(data, outcome_formula, "proposed"),
+    fit_ipw(data, censoring_formula, "naive"),
+    fit_ipw(data, propensity_formula, "proposed"),
+    fit_aipw(data, outcome_formula, censoring_formula, "naive"),
+    fit_aipw(data, outcome_formula, propensity_formula, "proposed"),
+    .eta_result(dml$eta_hat[1], dml$eta_hat[2], dml$eta_hat_cov)
+  )
+  result$Estimator <- c(
+    "G-Formula", "G-Formula", "IPW", "IPW", "AIPW", "AIPW", "DML"
+  )
+  result$Version <- c(
+    "Naive", "Proposed", "Naive", "Proposed", "Naive", "Proposed", "Proposed"
+  )
+  result
+}
+
+.complete_sim2_result <- function(
+    result, generated, seed, K) {
+  result$rdhat <- result$etahat_1 - result$etahat_0
+  result$rrhat <- result$etahat_1 / result$etahat_0
+  result$var_rd <- result$cov_00 + result$cov_11 - 2 * result$cov_01
+  result$var_rr <- result$cov_11 / result$etahat_0^2 +
+    result$cov_00 * result$etahat_1^2 / result$etahat_0^4 -
+    2 * result$cov_01 * result$etahat_1 / result$etahat_0^3
+  result$eta_0 <- generated$truth[1]
+  result$eta_1 <- generated$truth[2]
+  result$rd <- generated$truth[2] - generated$truth[1]
+  result$rr <- generated$truth[2] / generated$truth[1]
+  result$seed <- seed
+  result$m <- 20L
+  result$n_trial <- generated$n_trial
+  result$n_aux <- generated$n_auxiliary
+  result$p_resp <- 0.5
+  result$p_cens <- 0.3
+  result$K <- K
+  result
+}
+
 # Run the Monte Carlo replicates.
 run_sim2 <- function(
     sample_sizes, run_id, out_dir, mc_reps = 20L, base_seed = 91000000L,
-    K = 5L, arguments = NULL) {
+    K = 5L, arguments = NULL, replicates = seq_len(mc_reps)) {
 
   # Monte Carlo settings.
-  grid <- sample_sizes[rep(seq_len(nrow(sample_sizes)), mc_reps), ]
-  grid$replicate <- rep(seq_len(mc_reps), each = nrow(sample_sizes))
-  grid$seed <- base_seed + seq_len(nrow(grid))
-  covariates <- c("X1", "W1", "W2", "W3")
+  grid <- sample_sizes[rep(seq_len(nrow(sample_sizes)), length(replicates)), ]
+  grid$replicate <- rep(replicates, each = nrow(sample_sizes))
+  grid$seed <- base_seed + grid$replicate
   results <- data.frame()
   started_at <- proc.time()[["elapsed"]]
 
@@ -90,39 +140,13 @@ run_sim2 <- function(
       20L, grid$n_trial[i], grid$n_auxiliary[i], 0.5, 0.3, grid$seed[i]
     )
 
-    # Fit parametric AIPW and cross-fitted DML.
-    aipw <- fit_aipw(
-      generated$data, Y ~ A * (X1 + W1 + W2 + W3),
-      Q ~ X1 + W1 + W2 + W3, "proposed"
-    )
-    dml <- dml_fit(
-      generated$data, covariates, covariates, K,
-      arguments, random_seed = grid$seed[i]
-    )
-
     # Store risks, contrasts, and estimated variances.
-    result <- rbind(
-      aipw, .eta_result(dml$eta_hat[1], dml$eta_hat[2], dml$eta_hat_cov)
+    result <- fit_sim2_estimators(
+      generated$data, K, arguments, random_seed = grid$seed[i]
     )
-    result$Estimator <- c("AIPW", "DML")
-    result$Version <- "Proposed"
-    result$rdhat <- result$etahat_1 - result$etahat_0
-    result$rrhat <- result$etahat_1 / result$etahat_0
-    result$var_rd <- result$cov_00 + result$cov_11 - 2 * result$cov_01
-    result$var_rr <- result$cov_11 / result$etahat_0^2 +
-      result$cov_00 * result$etahat_1^2 / result$etahat_0^4 -
-      2 * result$cov_01 * result$etahat_1 / result$etahat_0^3
-
-    result$eta_0 <- generated$truth[1]
-    result$eta_1 <- generated$truth[2]
-    result$rd <- generated$truth[2] - generated$truth[1]
-    result$rr <- generated$truth[2] / generated$truth[1]
-    result$seed <- grid$seed[i]
-    result$n_trial <- grid$n_trial[i]
-    result$n_aux <- grid$n_auxiliary[i]
-    result$K <- K
-    result$run_id <- run_id
-    result$replicate <- grid$replicate[i]
+    result <- .complete_sim2_result(
+      result, generated, grid$seed[i], K
+    )
     results <- rbind(results, result)
     cat("Completed", i, "of", nrow(grid), "replicates\n")
   }
@@ -131,11 +155,8 @@ run_sim2 <- function(
   elapsed <- proc.time()[["elapsed"]] - started_at
   rownames(results) <- NULL
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  result_file <- file.path(out_dir, paste0("monte_carlo_", run_id, "_results.csv"))
+  result_file <- file.path(out_dir, paste0(run_id, ".csv"))
   write.csv(results, result_file, row.names = FALSE)
-  timing <- data.frame(mc_reps, combinations = nrow(sample_sizes), K,
-                       elapsed_seconds = elapsed)
-  write.csv(timing, file.path(out_dir, paste0(run_id, "_timing.csv")), row.names = FALSE)
   cat("Finished in", round(elapsed, 1), "seconds\n")
   invisible(list(results = results, result_file = result_file, elapsed = elapsed))
 }

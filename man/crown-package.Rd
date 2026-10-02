@@ -6,11 +6,10 @@
 \title{Cluster-Randomized Trial Analysis with Outcomes Weighted for Nonresponse}
 \description{
 G-formula, IPW, and AIPW estimators combine trial outcomes with auxiliary
-covariates using parametric regression or proposed cross-fitted machine
-learning.
+covariates using logistic regression or cross-fitted machine learning.
 }
 \author{
-\strong{Maintainer}: zhitanhe \email{zhitanhe@unc.edu}
+\strong{Maintainer}: Zhitan He \email{zhitanhe@unc.edu}
 
 Authors:
 \itemize{

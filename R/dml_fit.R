@@ -1,6 +1,6 @@
-#' Proposed cross-fitted AIPW estimator
+#' Proposed cross-fitted DML estimator
 #'
-#' Fits the Proposed AIPW estimator using cross-fitted XGBoost nuisance models.
+#' Fits the Proposed AIPW estimator with cross-fitted XGBoost nuisance models.
 #'
 #' @param dat Combined data frame containing:
 #' \itemize{
@@ -23,7 +23,8 @@
 #' @param random_seed Seed set before splitting `S`-by-`A` stratified
 #'   individual-level folds and fitting the nuisance models.
 #' @details Uses fold-specific Hajek normalization and the equal average of
-#'   the fold estimates. Selection odds are `zeta / (1 - zeta)`. Covariance
+#'   the fold estimates. Predicted selection probabilities are converted to
+#'   odds as `probability / (1 - probability)`. Covariance
 #'   uses the mean of fold-level individual contribution covariances divided
 #'   by the full observation count.
 #'   For sampling weights, contribution scaling uses observation counts, not
@@ -70,7 +71,6 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     selection0 <- training[(training$Q == 1 & training$A == 0) | training$S == 0, ]
     selection1 <- training[(training$Q == 1 & training$A == 1) | training$S == 0, ]
 
-    # Fit the four nuisance models required by Proposed AIPW.
     mu0 <- nonpar_est(
       observed0[mu_covariates], observed0$Y, arguments
     )

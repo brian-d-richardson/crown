@@ -1,7 +1,8 @@
 #' Print a Crown fit
 #'
-#' Displays the four causal estimates for each estimator and version.
-#' Nonparametric fits include a note giving the number of cross-fitting folds.
+#' Displays the nuisance-model type and four causal estimates for each
+#' estimator and version. XGBoost fits also report the number of cross-fitting
+#' folds.
 #'
 #' @param x A `crown_fit` object returned by [crown()].
 #' @param digits Number of significant digits used to format the printed table.
@@ -12,7 +13,13 @@
 #' @export
 print.crown_fit <- function(x, digits = 3, ...) {
   estimates <- x$estimates
-  output <- unique(estimates[c("estimator", "version")])
+  if (x$model == "xgboost") {
+    estimates$estimator[
+      estimates$estimator == "AIPW" & estimates$version == "Proposed"
+    ] <- "DML"
+  }
+  estimates$model <- if (x$model == "xgboost") "XGBoost" else "Logistic"
+  output <- unique(estimates[c("estimator", "version", "model")])
   parameters <- c(
     mean_control = "eta(0)",
     mean_treated = "eta(1)",
@@ -32,8 +39,8 @@ print.crown_fit <- function(x, digits = 3, ...) {
   cat("Crown causal estimates\n\n")
   print(output, row.names = FALSE, digits = digits)
   if (!is.null(x$dml)) {
-    cat("\nNonparametric XGBoost nuisance models;", nrow(x$dml$fold_estimates),
-        "folds of cross-fitting used.\n")
+    cat("\n", nrow(x$dml$fold_estimates),
+        " folds of cross-fitting used.\n", sep = "")
   }
   invisible(x)
 }
@@ -49,12 +56,18 @@ print.crown_fit <- function(x, digits = 3, ...) {
 #'   confidence intervals.
 #' @param ... Additional arguments; currently unused.
 #'
-#' @return A data frame containing the estimator, version, parameter, estimate,
-#'   standard error, and 95 percent confidence interval.
+#' @return A data frame containing the estimator, version, nuisance-model type,
+#'   parameter, estimate, standard error, and 95 percent confidence interval.
 #'
 #' @export
 summary.crown_fit <- function(object, digits = 3, ...) {
   output <- object$estimates
+  if (object$model == "xgboost") {
+    output$estimator[
+      output$estimator == "AIPW" & output$version == "Proposed"
+    ] <- "DML"
+  }
+  output$model <- if (object$model == "xgboost") "XGBoost" else "Logistic"
   output[["95% CI"]] <- sprintf(
     "[%.*f, %.*f]",
     digits, output$conf_low,
@@ -64,7 +77,7 @@ summary.crown_fit <- function(object, digits = 3, ...) {
   output$estimate <- round(output$estimate, digits)
   output$std_error <- round(output$std_error, digits)
   output <- output[c(
-    "estimator", "version", "parameter", "estimate", "std_error", "95% CI"
+    "estimator", "version", "model", "parameter", "estimate", "std_error", "95% CI"
   )]
   rownames(output) <- NULL
   output

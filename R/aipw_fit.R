@@ -133,8 +133,11 @@ fit_aipw <- function(
   design_q <- model.matrix(propensity_formula, data)
   auxiliary_weight <- sum(data$wt[auxiliary])
 
-  # Build each observation's AIPW contribution.
-  aipw_contributions <- function(beta_mu, beta_q0, beta_q1) {
+  # Build the two ratio components of each AIPW estimate. Keeping the
+  # auxiliary mean and trial residual correction separate gives each ratio its
+  # own correctly centered estimating equation under the fixed two-sample
+  # design.
+  aipw_components <- function(beta_mu, beta_q0, beta_q1) {
     mu0 <- plogis(as.vector(design0 %*% beta_mu))
     mu1 <- plogis(as.vector(design1 %*% beta_mu))
     probability0 <- plogis(as.vector(
@@ -148,42 +151,70 @@ fit_aipw <- function(
     h0 <- sum(1 / odds0)
     h1 <- sum(1 / odds1)
 
-    phi0 <- phi1 <- numeric(n)
-    phi0[auxiliary] <- n * data$wt[auxiliary] * mu0[auxiliary] / auxiliary_weight
-    phi1[auxiliary] <- n * data$wt[auxiliary] * mu1[auxiliary] / auxiliary_weight
-    phi0[observed0] <- n *
-      (data$Y[observed0] - mu0[observed0]) / odds0 / h0
-    phi1[observed1] <- n *
-      (data$Y[observed1] - mu1[observed1]) / odds1 / h1
-    list(phi0 = phi0, phi1 = phi1)
+    target0 <- sum(data$wt[auxiliary] * mu0[auxiliary]) / auxiliary_weight
+    target1 <- sum(data$wt[auxiliary] * mu1[auxiliary]) / auxiliary_weight
+    residual0 <- sum((data$Y[observed0] - mu0[observed0]) / odds0) / h0
+    residual1 <- sum((data$Y[observed1] - mu1[observed1]) / odds1) / h1
+    list(
+      mu0 = mu0, mu1 = mu1, odds0 = odds0, odds1 = odds1,
+      target0 = target0, target1 = target1,
+      residual0 = residual0, residual1 = residual1
+    )
   }
 
   beta_mu <- coef(outcome_fit)
   beta_q0 <- coef(propensity0)
   beta_q1 <- coef(propensity1)
-  contribution <- aipw_contributions(beta_mu, beta_q0, beta_q1)
-  eta0 <- mean(contribution$phi0)
-  eta1 <- mean(contribution$phi1)
+  component <- aipw_components(beta_mu, beta_q0, beta_q1)
+  eta0 <- component$target0 + component$residual0
+  eta1 <- component$target1 + component$residual1
   p_mu <- length(beta_mu)
   p_q0 <- length(beta_q0)
 
-  covariance <- .sandwich_covariance(
-    c(eta0, eta1, beta_mu, beta_q0, beta_q1),
+  component_covariance <- .sandwich_covariance(
+    c(
+      component$target0, component$target1,
+      component$residual0, component$residual1,
+      beta_mu, beta_q0, beta_q1
+    ),
     function(value) {
-      beta_mu_value <- value[2 + seq_len(p_mu)]
-      beta_q0_value <- value[2 + p_mu + seq_len(p_q0)]
+      beta_mu_value <- value[4 + seq_len(p_mu)]
+      beta_q0_value <- value[4 + p_mu + seq_len(p_q0)]
       beta_q1_value <- tail(value, length(beta_q1))
-      phi <- aipw_contributions(beta_mu_value, beta_q0_value, beta_q1_value)
+      current <- aipw_components(beta_mu_value, beta_q0_value, beta_q1_value)
       cbind(
         .logistic_score(data, beta_mu_value, outcome_formula) * observed,
         .logistic_score(data, beta_q0_value, propensity_formula) * fit0,
         .logistic_score(data, beta_q1_value, propensity_formula) * fit1,
-        phi$phi0 - value[1],
-        phi$phi1 - value[2]
+        ifelse(
+          auxiliary,
+          data$wt * (current$mu0 - value[1]),
+          0
+        ),
+        ifelse(
+          auxiliary,
+          data$wt * (current$mu1 - value[2]),
+          0
+        ),
+        replace(
+          numeric(n), observed0,
+          (data$Y[observed0] - current$mu0[observed0] - value[3]) /
+            current$odds0
+        ),
+        replace(
+          numeric(n), observed1,
+          (data$Y[observed1] - current$mu1[observed1] - value[4]) /
+            current$odds1
+        )
       )
     },
     n
   )
+
+  contrast <- matrix(0, nrow = 2L, ncol = nrow(component_covariance))
+  contrast[1L, c(1L, 3L)] <- 1
+  contrast[2L, c(2L, 4L)] <- 1
+  covariance <- contrast %*% component_covariance %*% t(contrast)
 
   .eta_result(eta0, eta1, covariance)
 }

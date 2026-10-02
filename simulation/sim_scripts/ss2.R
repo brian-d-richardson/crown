@@ -1,55 +1,40 @@
-#!/usr/bin/env Rscript
+# Simulation 2 -------------------------------------------------------------
 
-# Simulation 2: parametric AIPW vs cross-fitted XGBoost DML
+# Setup
 
-project_dir <- normalizePath(file.path(dirname(sys.frame(1)$ofile), "..", ".."))
+project_dir <- normalizePath(
+  file.path(dirname(sys.frame(1)$ofile), "..", "..")
+)
 setwd(project_dir)
 
-# Packages
-
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(legendry)
-library(grid)
-library(crown)
-
-# Functions
-
+devtools::load_all()
 source("simulation/sim_functions/sim2.R")
 source("simulation/sim_analysis/sim2_analysis.R")
 
 # Settings
 
-sample_sizes <- expand.grid(
-  n_trial = c(500L, 5000L),
-  n_auxiliary = c(500L, 5000L)
-)
-mc_reps <- 20L
+# Local example: 50 Monte Carlo replicates.
+# HPC: 10 independent jobs x 1,000 replicates = 10,000 total replicates.
+# The HPC shell script should assign a different seed and output file to each job.
+mc_reps <- 50
 
-run_id <- "xgboost_dml_mc20"
-data_dir <- file.path(project_dir, "simulation", "sim_data", "sim2")
-figure_dir <- file.path(project_dir, "simulation", "sim_figures", "sim2")
+sample_sizes <- expand.grid(
+  n_trial = c(500, 5000),
+  n_auxiliary = c(500, 5000)
+)
 
 # Run
 
 simulation <- run_sim2(
-  sample_sizes = sample_sizes,
-  run_id = run_id,
-  out_dir = data_dir,
-  mc_reps = mc_reps
+  sample_sizes,
+  run_id = "sd_local",
+  out_dir = "simulation/sim_data/sim2",
+  mc_reps = mc_reps,
+  base_seed = 91000000,
+  arguments = list(nthread = 1)
 )
 
 figures <- plot_sim2(
   simulation$results,
-  run_id,
-  figure_dir
+  figure_dir = "simulation/sim_figures/sim2/local"
 )
-
-cat(
-  "\nCompleted", mc_reps, "Monte Carlo replicates for each of",
-  nrow(sample_sizes), "sample-size combinations\n"
-)
-cat("Results:", simulation$result_file, "\n")
-cat("Figures:\n")
-print(figures)

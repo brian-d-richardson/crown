@@ -17,6 +17,7 @@
 \code{x}, invisibly.
 }
 \description{
-Displays the four causal estimates for each estimator and version.
-Nonparametric fits include a note giving the number of cross-fitting folds.
+Displays the nuisance-model type and four causal estimates for each
+estimator and version. XGBoost fits also report the number of cross-fitting
+folds.
 }

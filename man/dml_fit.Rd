@@ -2,7 +2,7 @@
 % Please edit documentation in R/dml_fit.R
 \name{dml_fit}
 \alias{dml_fit}
-\title{Proposed cross-fitted AIPW estimator}
+\title{Proposed cross-fitted DML estimator}
 \usage{
 dml_fit(
   dat,
@@ -50,11 +50,12 @@ selection probabilities, and selection odds.
 }
 }
 \description{
-Fits the Proposed AIPW estimator using cross-fitted XGBoost nuisance models.
+Fits the Proposed AIPW estimator with cross-fitted XGBoost nuisance models.
 }
 \details{
 Uses fold-specific Hajek normalization and the equal average of
-the fold estimates. Selection odds are \code{zeta / (1 - zeta)}. Covariance
+the fold estimates. Predicted selection probabilities are converted to
+odds as \code{probability / (1 - probability)}. Covariance
 uses the mean of fold-level individual contribution covariances divided
 by the full observation count.
 For sampling weights, contribution scaling uses observation counts, not

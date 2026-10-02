@@ -1,26 +1,19 @@
-# crown: Cluster-Randomized Trial Analysis with Outcomes Weighted for Nonresponse
+# crown
 
-`crown` combines a cluster-randomized trial with auxiliary baseline data to
-estimate population mean potential outcomes and population-average causal
-effects on the risk-difference and risk-ratio scales.
+`crown` combines a cluster-randomized trial with an auxiliary sample to
+estimate population mean potential outcomes, risk differences, and risk
+ratios when trial outcomes are affected by nonresponse or censoring.
 
 ## Installation
 
-Install the current version from GitHub:
+Install from the package source directory:
 
 ```r
 install.packages("remotes")
-library(remotes)
-install_github("brian-d-richardson/crown", ref = "crown-1.0.0")
-library(crown)
+remotes::install_local(".")
 ```
 
-The required packages are installed automatically. `crown` requires R >= 4.1.
-
 ## Quick start
-
-The package includes a weighted example with 50,000 trial observations and
-50,000 auxiliary observations:
 
 ```r
 library(crown)
@@ -28,12 +21,7 @@ data(crown_example)
 
 trial <- crown_example[crown_example$S == 1, ]
 auxiliary <- crown_example[crown_example$S == 0, ]
-```
 
-Run the default analysis, Proposed AIPW with cross-fitted nonparametric
-models (currently XGBoost):
-
-```r
 fit <- crown(
   trial_data = trial,
   auxiliary_data = auxiliary,
@@ -43,134 +31,90 @@ fit <- crown(
   censoring = "C",
   cluster = "cluster",
   covariates = c("X1", "X2", "W1", "W2"),
-  version = "proposed",
-  estimator = "aipw",
-  model = "nonparametric",
   auxiliary_weight = "sampling_weight"
 )
 
-print(fit)
 summary(fit)
 ```
 
-### Example result
+The default is Proposed DML: the Proposed AIPW estimator with cross-fitted
+XGBoost nuisance models.
 
-| Parameter | Estimate | Standard error | 95% CI |
-|---|---:|---:|---|
-| `eta(0)` | 0.272 | 0.005 | [0.263, 0.281] |
-| `eta(1)` | 0.404 | 0.006 | [0.392, 0.416] |
-| `RD` | 0.132 | 0.007 | [0.118, 0.147] |
-| `RR` | 1.486 | 0.033 | [1.422, 1.550] |
+## Supported analyses
 
-## Choose the analysis
-
-The main choices are made directly in `crown()`:
-
-| Argument | Default | Choices |
-|---|---|---|
-| `version` | `"proposed"` | `"proposed"`, `"naive"` |
-| `estimator` | `"aipw"` | `"aipw"`, `"gformula"`, `"ipw"` |
-| `model` | `"nonparametric"` | `"nonparametric"`, `"parametric"` |
-
-`proposed` combines trial outcomes with auxiliary covariates to adjust for
-nonresponse and censoring. `naive` uses trial responders alone.
-
-The supported combinations are:
-
-| Model | Version | Estimator | Auxiliary weight |
+| Analysis | `version` | `estimator` | `model` |
 |---|---|---|---|
-| Parametric | Proposed | G-formula, IPW, or AIPW | With or without |
-| Parametric | Naive | G-formula, IPW, or AIPW | Not used |
-| Nonparametric | Proposed | AIPW | With or without |
+| Naive G-formula | `"naive"` | `"gformula"` | `"logistic"` |
+| Proposed G-formula | `"proposed"` | `"gformula"` | `"logistic"` |
+| Naive IPW | `"naive"` | `"ipw"` | `"logistic"` |
+| Proposed IPW | `"proposed"` | `"ipw"` | `"logistic"` |
+| Naive AIPW | `"naive"` | `"aipw"` | `"logistic"` |
+| Proposed AIPW | `"proposed"` | `"aipw"` | `"logistic"` |
+| Proposed DML | `"proposed"` | `"aipw"` | `"xgboost"` |
 
-All supported combinations return standard errors and 95% confidence
-intervals. The nonparametric model uses cross-fitted XGBoost and is available
-only for Proposed AIPW. Unsupported combinations stop with an error that lists
-the available choices.
+These are the only supported combinations. Use `K` to set the number of DML
+cross-fitting folds and `arguments` to pass XGBoost settings.
 
-For the nonparametric model, `K = 5L` sets the number of folds. Use `arguments`
-to pass XGBoost settings and `random_seed` to reproduce the fold split.
-
-## Prepare your data
-
-Pass the trial and auxiliary samples as separate data frames. One row represents
-one person.
+## Data requirements
 
 | Variable | Trial | Auxiliary |
 |---|---|---|
 | Cluster ID | Required | Required; must match a trial cluster |
-| Treatment | Required and constant within cluster | Not required |
-| Response | Required | Not required |
-| Censoring | Required | Not required |
+| Treatment | Required and constant within cluster | Inherited from the trial cluster |
+| Response indicator | Required | Not required |
+| Censoring indicator | Required | Not required |
 | Outcome | Required for uncensored responders | Not required |
-| Covariates | Required | The same covariates are required |
+| Covariates | Required | Same covariates required |
 | Sampling weight | Not used | Optional |
 
-Use the column names when calling `crown()`. Missing outcomes are allowed for
-nonresponders and censored responders.
-
-### Auxiliary sampling weights
-
-If auxiliary observations have equal sampling weights, leave the weight
-unspecified:
-
-```r
-auxiliary_weight = NULL
-```
-
-If it has a sampling-weight column, provide its name:
-
-```r
-auxiliary_weight = "sampling_weight"
-```
-
-The weights are normalized to have mean one. They are used only by Proposed
-analyses; Naive analyses do not use the auxiliary sample.
-
-### Included weighted data
-
-`crown_example` has 100,000 rows in 20 clusters, split equally between trial and
-auxiliary observations. It includes an auxiliary sampling-weight column so the
-weighted interface can be used directly.
+Pass the trial and auxiliary samples as separate data frames. If auxiliary
+sampling weights are unequal, provide the weight-column name through
+`auxiliary_weight`; otherwise leave it as `NULL`.
 
 ## Simulations
 
-The simulation code stays in the GitHub repository and is not included in the
-installed package. From the `crown` source folder, run:
+Simulation 1 evaluates Naive and Proposed parametric estimators under correct
+and incorrect nuisance-model specifications, together with Proposed DML.
+Simulation 2 evaluates all seven estimators under a nonlinear data-generating
+process; its main figures show the four Proposed estimators.
+
+For a local run, set `mc_reps` near the top of the script and click Source in
+RStudio or VS Code:
 
 ```r
-install.packages(c("dplyr", "tidyr", "ggplot2", "ggh4x", "legendry"))
 source("simulation/sim_scripts/ss1.R")
 source("simulation/sim_scripts/ss2.R")
 ```
 
-- Simulation 1 compares Naive and Proposed parametric G-formula, IPW, and AIPW.
-- Simulation 2 compares Proposed parametric AIPW with Proposed cross-fitted
-  nonparametric AIPW.
-- Both use `(500, 500)`, `(500, 5000)`, `(5000, 500)`, and `(5000, 5000)` for
-  `(n_trial, n_auxiliary)`.
-- Both currently run 20 Monte Carlo replicates per sample-size combination.
-- Replicates and folds run sequentially; XGBoost may use its own threads.
+Local results are saved as `sd_local.csv`; the fitted results are returned in
+the `simulation` object, and the three figures are written to the corresponding
+`sim_figures/sim1/local/` or `sim_figures/sim2/local/` directory.
 
-The figures below come from earlier 10,000-replicate runs and still need to be
-verified against the current code.
+The repository retains 10,000 Monte Carlo replicates for each simulation in
+`simulation/sim_data/`. Run the analysis scripts to reproduce the figures:
+
+```sh
+Rscript simulation/sim_analysis/sim1_analysis.R
+Rscript simulation/sim_analysis/sim2_analysis.R
+```
 
 ### Simulation 1
 
-![Simulation 1 risk-difference estimates](simulation/sim_figures/reference/sim1_estimates.png)
-
-![Simulation 1 variance comparison](simulation/sim_figures/reference/sim1_variance.png)
-
-![Simulation 1 confidence-interval coverage](simulation/sim_figures/reference/sim1_confidence.png)
+<p align="center">
+  <img src="simulation/sim_figures/sim1/sim1_estimates.png"
+       alt="Simulation 1 estimates" width="760">
+</p>
 
 ### Simulation 2
 
-![Simulation 2 risk-difference estimates](simulation/sim_figures/reference/sim2_estimates.png)
+<p align="center">
+  <img src="simulation/sim_figures/sim2/sim2_estimates.png"
+       alt="Simulation 2 estimates" width="1000">
+</p>
 
-![Simulation 2 variance comparison](simulation/sim_figures/reference/sim2_variance.png)
+Variance and confidence-interval coverage figures are stored in the same
+`sim1` and `sim2` figure directories.
 
-![Simulation 2 confidence-interval coverage](simulation/sim_figures/reference/sim2_confidence.png)
+## Reference
 
-## References
-
-To be added.
+To be added after publication.

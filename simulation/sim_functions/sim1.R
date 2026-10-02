@@ -1,4 +1,4 @@
-# Simulation 1: parametric model misspecification ---------------------------
+# Simulation 1: model misspecification --------------------------------------
 
 # Generate one trial and one auxiliary sample.
 generate_sim1_data <- function(
@@ -81,17 +81,67 @@ generate_sim1_data <- function(
   )
 }
 
-# Run the Monte Carlo study and fit the six parametric estimators.
+# Fit the three proposed parametric estimators for one model scenario.
+fit_sim1_estimators <- function(data, mu_correct, pi_correct) {
+  outcome_formula <- if (mu_correct) {
+    Y ~ A * (X1 + W1 + W2)
+  } else {
+    Y ~ A * (X1 + W2)
+  }
+  propensity_formula <- if (pi_correct) {
+    Q ~ X1 + W1 + W2
+  } else {
+    Q ~ X1 + W2
+  }
+
+  result <- rbind(
+    fit_gformula(data, outcome_formula, "proposed"),
+    fit_ipw(data, propensity_formula, "proposed"),
+    fit_aipw(data, outcome_formula, propensity_formula, "proposed")
+  )
+  result$Estimator <- c("G-Formula", "IPW", "AIPW")
+  result$Version <- "Proposed"
+  result
+}
+
+# Add truths, contrasts, and variance estimates to fitted risks.
+.complete_sim1_result <- function(
+    result, generated, seed, n_clusters, p_response, p_censoring,
+    mu_correct, pi_correct, K) {
+  result$rdhat <- result$etahat_1 - result$etahat_0
+  result$rrhat <- result$etahat_1 / result$etahat_0
+  result$var_rd <- result$cov_00 + result$cov_11 - 2 * result$cov_01
+  result$var_rr <- result$cov_11 / result$etahat_0^2 +
+    result$cov_00 * result$etahat_1^2 / result$etahat_0^4 -
+    2 * result$cov_01 * result$etahat_1 / result$etahat_0^3
+  result$eta_0 <- generated$truth[["eta0"]]
+  result$eta_1 <- generated$truth[["eta1"]]
+  result$rd <- result$eta_1 - result$eta_0
+  result$rr <- result$eta_1 / result$eta_0
+  result$seed <- seed
+  result$m <- n_clusters
+  result$n_trial <- generated$n_trial
+  result$n_aux <- generated$n_auxiliary
+  result$p_resp <- p_response
+  result$p_cens <- p_censoring
+  result$mu_correct <- mu_correct
+  result$pi_correct <- pi_correct
+  result$K <- K
+  result
+}
+
+# Run the Monte Carlo study.
 run_sim1 <- function(
     sample_sizes, run_id, out_dir,
     n_clusters = 20L, p_response = 0.5, p_censoring = 0.3,
-    mc_reps = 30L, base_seed = 11000000L) {
+    mc_reps = 30L, base_seed = 11000000L, replicates = seq_len(mc_reps),
+    K = 5L, arguments = NULL) {
 
   # Monte Carlo settings.
 
-  grid <- sample_sizes[rep(seq_len(nrow(sample_sizes)), mc_reps), ]
-  grid$replicate <- rep(seq_len(mc_reps), each = nrow(sample_sizes))
-  grid$seed <- base_seed + seq_len(nrow(grid))
+  grid <- sample_sizes[rep(seq_len(nrow(sample_sizes)), length(replicates)), ]
+  grid$replicate <- rep(replicates, each = nrow(sample_sizes))
+  grid$seed <- base_seed + grid$replicate
   rownames(grid) <- NULL
   scenarios <- expand.grid(
     mu_correct = c(TRUE, FALSE),
@@ -99,7 +149,7 @@ run_sim1 <- function(
   )
 
   cat(
-    "Running", mc_reps, "Simulation 1 replicates for each of",
+    "Running", length(replicates), "Simulation 1 replicates for each of",
     nrow(sample_sizes), "sample-size combinations\n"
   )
 
@@ -113,67 +163,47 @@ run_sim1 <- function(
     )
 
     for (j in seq_len(nrow(scenarios))) {
-      mu_correct <- scenarios$mu_correct[j]
-      pi_correct <- scenarios$pi_correct[j]
-      outcome_formula <- if (mu_correct) {
-        Y ~ A * (X1 + W1 + W2)
-      } else {
-        Y ~ A * (X1 + W2)
-      }
-      propensity_formula <- if (pi_correct) {
-        Q ~ X1 + W1 + W2
-      } else {
-        Q ~ X1 + W2
-      }
-      censoring_formula <- if (pi_correct) {
-        C ~ X1 + W1 + W2
-      } else {
-        C ~ X1 + W2
-      }
-
-      estimates <- rbind(
-        fit_gformula(generated$data, outcome_formula, "naive"),
-        fit_gformula(generated$data, outcome_formula, "proposed"),
-        fit_ipw(generated$data, censoring_formula, "naive"),
-        fit_ipw(generated$data, propensity_formula, "proposed"),
-        fit_aipw(generated$data, outcome_formula, censoring_formula, "naive"),
-        fit_aipw(generated$data, outcome_formula, propensity_formula, "proposed")
+      estimates <- fit_sim1_estimators(
+        generated$data, scenarios$mu_correct[j], scenarios$pi_correct[j]
       )
-      estimates$Estimator <- rep(c("G-Formula", "IPW", "AIPW"), each = 2L)
-      estimates$Version <- rep(c("Naive", "Proposed"), 3L)
-      estimates$rdhat <- estimates$etahat_1 - estimates$etahat_0
-      estimates$rrhat <- estimates$etahat_1 / estimates$etahat_0
-      estimates$var_rd <- estimates$cov_11 + estimates$cov_00 -
-        2 * estimates$cov_01
-      estimates$var_rr <- estimates$cov_11 / estimates$etahat_0^2 +
-        estimates$cov_00 * estimates$etahat_1^2 / estimates$etahat_0^4 -
-        2 * estimates$cov_01 * estimates$etahat_1 / estimates$etahat_0^3
-      estimates <- estimates[c(
-        "Estimator", "Version", "etahat_0", "etahat_1", "rdhat", "rrhat",
-        "cov_00", "cov_01", "cov_11", "var_rd", "var_rr"
-      )]
-
-      result <- estimates
-      result$eta_0 <- generated$truth[["eta0"]]
-      result$eta_1 <- generated$truth[["eta1"]]
-      result$rd <- result$eta_1 - result$eta_0
-      result$rr <- result$eta_1 / result$eta_0
-      result$seed <- grid$seed[i]
-      result$n_trial <- generated$n_trial
-      result$n_aux <- generated$n_auxiliary
-      result$mu_correct <- mu_correct
-      result$pi_correct <- pi_correct
-      result$run_id <- run_id
-      result$replicate <- grid$replicate[i]
-      results <- rbind(results, result)
+      results <- rbind(results, .complete_sim1_result(
+        estimates, generated, grid$seed[i], n_clusters, p_response, p_censoring,
+        scenarios$mu_correct[j], scenarios$pi_correct[j], K
+      ))
     }
+
+    correct_outcome <- Y ~ A * (X1 + W1 + W2)
+    correct_censoring <- C ~ X1 + W1 + W2
+    naive <- rbind(
+      fit_gformula(generated$data, correct_outcome, "naive"),
+      fit_ipw(generated$data, correct_censoring, "naive"),
+      fit_aipw(generated$data, correct_outcome, correct_censoring, "naive")
+    )
+    naive$Estimator <- c("G-Formula", "IPW", "AIPW")
+    naive$Version <- "Naive"
+    results <- rbind(results, .complete_sim1_result(
+      naive, generated, grid$seed[i], n_clusters, p_response, p_censoring,
+      TRUE, TRUE, K
+    ))
+
+    dml <- dml_fit(
+      generated$data, c("X1", "W1", "W2"), c("X1", "W1", "W2"),
+      K, arguments, random_seed = grid$seed[i]
+    )
+    dml <- .eta_result(dml$eta_hat[1], dml$eta_hat[2], dml$eta_hat_cov)
+    dml$Estimator <- "DML"
+    dml$Version <- "Proposed"
+    results <- rbind(results, .complete_sim1_result(
+      dml, generated, grid$seed[i], n_clusters, p_response, p_censoring,
+      TRUE, TRUE, K
+    ))
   }
 
   # Save the results.
 
   rownames(results) <- NULL
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  result_file <- file.path(out_dir, paste0("simulation1_", run_id, "_results.csv"))
+  result_file <- file.path(out_dir, paste0(run_id, ".csv"))
   write.csv(results, result_file, row.names = FALSE)
   invisible(list(results = results, result_file = result_file))
 }

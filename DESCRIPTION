@@ -3,18 +3,18 @@ Title: Cluster-Randomized Trial Analysis with Outcomes Weighted for Nonresponse
 Version: 1.0.0
 Authors@R: c(
     person("Brian", "Richardson", email = "richabr@wfu.edu", role = "aut"),
-    person("zhitanhe", email = "zhitanhe@unc.edu", role = c("aut", "cre"))
+    person("Zhitan", "He", email = "zhitanhe@unc.edu", role = c("aut", "cre"))
     )
 Description: Estimates population mean potential outcomes and population-average
     causal effects using trial and auxiliary data. Provides parametric G-formula,
     inverse probability weighting, augmented inverse probability weighting, and
-    Proposed cross-fitted nonparametric estimation with XGBoost nuisance models.
+    cross-fitted estimation with XGBoost nuisance regressions.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Depends: R (>= 4.1.0)
 Imports: numDeriv, stats, utils, xgboost (>= 3.2.0)
-Suggests: dplyr, ggh4x, ggplot2, legendry,
+Suggests: devtools, dplyr, ggh4x, ggplot2, legendry,
     testthat (>= 3.0.0), tidyr
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
