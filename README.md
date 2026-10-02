@@ -6,12 +6,10 @@ ratios when trial outcomes are affected by nonresponse or censoring.
 
 ## Installation
 
-Install the development version from GitHub:
+Install from the package source directory:
 
 ```r
-install.packages("devtools")
-library(devtools)
-install_github("brian-d-richardson/crown", ref = "crown-1.0.0")
+install.packages(".", repos = NULL, type = "source")
 library(crown)
 ```
 
