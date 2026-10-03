@@ -168,17 +168,19 @@ and 95% confidence-interval coverage with the nominal level.
 ### Simulation 2
 
 Simulation 2 uses the same cluster, covariate, and sample-size settings and adds
-$W_3\sim N(0,1)$. Its response mechanism is nonlinear:
+$W_3\sim N(0,1)$. Let $\mathrm{expit}(x)=1/(1+e^{-x})$. Its response mechanism
+is nonlinear:
 
 $$
-\Pr(R=1)=\mathrm{expit}\{-1.417151+2\,1(W_2^2<1)\},
+\Pr(R=1)=\mathrm{expit}\left[-1.417151+
+2\mathbf{1}\left(W_2^2<1\right)\right].
 $$
 
 while censoring follows
 
 $$
 \Pr(C=1\mid R=1)=
-\mathrm{expit}(-0.8532847-0.25A+0.25W_1).
+\mathrm{expit}\left(-0.8532847-0.25A+0.25W_1\right).
 $$
 
 The potential-outcome probabilities are
@@ -187,7 +189,7 @@ $$
 \Pr\{Y(0)=1\}=
 \begin{cases}
 0.9, & W_2^2<1,\\
-\mathrm{expit}\{0.25\sin(\pi W_3/4)\}, & W_2^2\geq1,
+\mathrm{expit}\left(0.25\sin(\pi W_3/4)\right), & W_2^2\geq1,
 \end{cases}
 $$
 
@@ -195,7 +197,7 @@ $$
 \Pr\{Y(1)=1\}=
 \begin{cases}
 0.1, & W_2^2<1,\\
-\mathrm{expit}\{0.25\sin(\pi W_3/4)\}, & W_2^2\geq1.
+\mathrm{expit}\left(0.25\sin(\pi W_3/4)\right), & W_2^2\geq1.
 \end{cases}
 $$
 
