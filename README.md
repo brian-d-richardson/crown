@@ -120,27 +120,27 @@ arm, and $X_1$ is a fixed cluster-level risk score. The trial and auxiliary
 samples have different covariate distributions:
 
 $$
-W_1^{trial}\sim\operatorname{Bernoulli}(0.5),\qquad
-W_1^{aux}\sim\operatorname{Bernoulli}(0.75),\qquad
+W_1^{trial}\sim\mathrm{Bernoulli}(0.5),\qquad
+W_1^{aux}\sim\mathrm{Bernoulli}(0.75),\qquad
 W_2\sim N(0,1).
 $$
 
 The response and censoring indicators are generated from
 
 $$
-\Pr(R=1)=\operatorname{expit}(\alpha_R-2AW_1),\qquad
-\Pr(C=1\mid R=1)=\operatorname{expit}(\alpha_C-0.25A+0.25W_1),
+\Pr(R=1)=\mathrm{expit}(\alpha_R-2AW_1),\qquad
+\Pr(C=1\mid R=1)=\mathrm{expit}(\alpha_C-0.25A+0.25W_1),
 $$
 
 where the intercepts give overall response and censoring probabilities of 0.5
 and 0.3. Binary potential outcomes are generated using
 
 $$
-\Pr\{Y(0)=1\}=\operatorname{expit}(-1+2W_1+0.5W_2+0.25X_1),
+\Pr\{Y(0)=1\}=\mathrm{expit}(-1+2W_1+0.5W_2+0.25X_1),
 $$
 
 $$
-\Pr\{Y(1)=1\}=\operatorname{expit}(-W_1-0.5W_2).
+\Pr\{Y(1)=1\}=\mathrm{expit}(-W_1-0.5W_2).
 $$
 
 For each combination of trial and auxiliary sample sizes (500 or 5,000), we
@@ -171,14 +171,14 @@ Simulation 2 uses the same cluster, covariate, and sample-size settings and adds
 $W_3\sim N(0,1)$. Its response mechanism is nonlinear:
 
 $$
-\Pr(R=1)=\operatorname{expit}\{-1.417151+2\,1(W_2^2<1)\},
+\Pr(R=1)=\mathrm{expit}\{-1.417151+2\,1(W_2^2<1)\},
 $$
 
 while censoring follows
 
 $$
 \Pr(C=1\mid R=1)=
-\operatorname{expit}(-0.8532847-0.25A+0.25W_1).
+\mathrm{expit}(-0.8532847-0.25A+0.25W_1).
 $$
 
 The potential-outcome probabilities are
@@ -187,7 +187,7 @@ $$
 \Pr\{Y(0)=1\}=
 \begin{cases}
 0.9, & W_2^2<1,\\
-\operatorname{expit}\{0.25\sin(\pi W_3/4)\}, & W_2^2\geq1,
+\mathrm{expit}\{0.25\sin(\pi W_3/4)\}, & W_2^2\geq1,
 \end{cases}
 $$
 
@@ -195,7 +195,7 @@ $$
 \Pr\{Y(1)=1\}=
 \begin{cases}
 0.1, & W_2^2<1,\\
-\operatorname{expit}\{0.25\sin(\pi W_3/4)\}, & W_2^2\geq1.
+\mathrm{expit}\{0.25\sin(\pi W_3/4)\}, & W_2^2\geq1.
 \end{cases}
 $$
 
