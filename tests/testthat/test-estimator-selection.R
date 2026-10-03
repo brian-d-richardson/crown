@@ -24,6 +24,31 @@ test_that("the seven supported combinations return complete inference", {
                  paste(setting$estimator, setting$version, sep = "_"))
     expect_true(all(is.finite(fit$estimates$estimate)))
     expect_true(all(is.finite(fit$estimates$std_error)))
+
+    output <- summary(fit)
+    expected_estimator <- if (setting$model == "xgboost") {
+      "DML"
+    } else {
+      labels[[setting$estimator]]
+    }
+    expect_named(output, c(
+      "estimator", "version", "model", "estimand", "estimate", "std_error", "95% CI"
+    ))
+    expect_identical(output$estimand, c(
+      "mean_control", "mean_treated", "risk_difference", "risk_ratio"
+    ))
+    expect_setequal(output$estimator, expected_estimator)
+    expect_setequal(
+      output$version,
+      if (setting$version == "proposed") "Proposed" else "Naive"
+    )
+    expect_setequal(
+      output$model,
+      if (setting$model == "xgboost") "XGBoost" else "Logistic"
+    )
+    expect_true(all(is.finite(output$estimate)))
+    expect_true(all(is.finite(output$std_error)))
+    expect_false(anyNA(output[["95% CI"]]))
   }
 })
 
