@@ -15,6 +15,9 @@ test_that("the logistic interface defaults to proposed AIPW only", {
   expect_false(any(grepl("cross-fitting", capture.output(print(fit)), fixed = TRUE)))
   expect_equal(nrow(summary(fit)), 4L)
   expect_setequal(summary(fit)$model, "Logistic")
+  expect_named(summary(fit), c(
+    "estimator", "version", "model", "estimand", "estimate", "std_error", "95% CI"
+  ))
   for (name in names(fit$covariance)) {
     expect_equal(fit$covariance[[name]], t(fit$covariance[[name]]))
   }

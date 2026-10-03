@@ -91,7 +91,7 @@ Crown causal estimates
        DML Proposed XGBoost  0.272  0.404 0.132 1.49
 
 5 folds of cross-fitting used.
-  estimator  version   model       parameter estimate std_error         95% CI
+  estimator  version   model        estimand estimate std_error         95% CI
 1       DML Proposed XGBoost    mean_control    0.272     0.005 [0.263, 0.281]
 2       DML Proposed XGBoost    mean_treated    0.404     0.006 [0.392, 0.416]
 3       DML Proposed XGBoost risk_difference    0.132     0.007 [0.118, 0.147]

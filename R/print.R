@@ -57,7 +57,7 @@ print.crown_fit <- function(x, digits = 3, ...) {
 #' @param ... Additional arguments; currently unused.
 #'
 #' @return A data frame containing the estimator, version, nuisance-model type,
-#'   parameter, estimate, standard error, and 95 percent confidence interval.
+#'   estimand, estimate, standard error, and 95 percent confidence interval.
 #'
 #' @export
 summary.crown_fit <- function(object, digits = 3, ...) {
@@ -76,8 +76,9 @@ summary.crown_fit <- function(object, digits = 3, ...) {
   output[["95% CI"]][is.na(output$conf_low) | is.na(output$conf_high)] <- NA_character_
   output$estimate <- round(output$estimate, digits)
   output$std_error <- round(output$std_error, digits)
+  names(output)[names(output) == "parameter"] <- "estimand"
   output <- output[c(
-    "estimator", "version", "model", "parameter", "estimate", "std_error", "95% CI"
+    "estimator", "version", "model", "estimand", "estimate", "std_error", "95% CI"
   )]
   rownames(output) <- NULL
   output

@@ -16,7 +16,7 @@ confidence intervals.}
 }
 \value{
 A data frame containing the estimator, version, nuisance-model type,
-parameter, estimate, standard error, and 95 percent confidence interval.
+estimand, estimate, standard error, and 95 percent confidence interval.
 }
 \description{
 Returns all estimator-specific causal estimates with standard errors and
