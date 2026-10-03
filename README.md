@@ -39,11 +39,11 @@ These are the only supported combinations.
 | Covariates | Required | Same covariates required |
 | Sampling weight | Not used | Optional |
 
-Pass the trial and auxiliary samples as separate data frames. If auxiliary
+Provide the trial and auxiliary samples as separate data frames. If auxiliary
 sampling weights are unequal, provide the weight-column name through
 `auxiliary_weight`; otherwise leave it as `NULL`.
 
-## Application
+## Quick Start and Example
 
 The package includes `crown_example`, a synthetic dataset with 50,000 trial
 participants and 50,000 auxiliary participants across 20 clusters. Its first
@@ -167,9 +167,10 @@ and 95% confidence-interval coverage with the nominal level.
 
 ### Simulation 2
 
-Simulation 2 uses the same cluster, covariate, and sample-size settings and adds
-$W_3\sim N(0,1)$. Let $\mathrm{expit}(x)=1/(1+e^{-x})$. Its response mechanism
-is nonlinear:
+Simulation 2 uses a more complex DGP to evaluate the estimators under nonlinear
+response and outcome mechanisms. It uses the same cluster, covariate, and
+sample-size settings as Simulation 1 and adds $W_3\sim N(0,1)$. Let
+$\mathrm{expit}(x)=1/(1+e^{-x})$. Its response mechanism is nonlinear:
 
 $$
 \Pr(R=1)=\mathrm{expit}\left[-1.417151+
@@ -204,8 +205,9 @@ $$
 For each generated dataset, we fit all seven supported estimators. The six
 parametric estimators use linear logistic nuisance models, whereas Proposed DML
 uses cross-fitted XGBoost nuisance models. We summarize the same three Monte
-Carlo properties as in Simulation 1; the figures below display the four
-Proposed estimators.
+Carlo properties as in Simulation 1. The figures below display only the four
+Proposed estimators because the three Naive estimators already performed poorly
+under the simpler DGP in Simulation 1.
 
 <p align="center"><strong>Parameter estimates</strong><br>
   <img src="simulation/sim_figures/sim2/sim2_estimates.png"
