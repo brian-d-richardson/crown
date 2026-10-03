@@ -6,11 +6,9 @@ ratios when trial outcomes are affected by nonresponse or censoring.
 
 ## Installation
 
-Install from the package source directory:
-
 ```r
-install.packages(".", repos = NULL, type = "source")
-library(crown)
+# install.packages("remotes")
+remotes::install_github("brian-d-richardson/crown", ref = "crown-1.0.0")
 ```
 
 ## Supported analyses
@@ -60,6 +58,7 @@ five participants are:
 Select an analysis through `version`, `estimator`, and `model`:
 
 ```r
+library(crown)
 data(crown_example)
 
 trial <- crown_example[crown_example$S == 1, ]
