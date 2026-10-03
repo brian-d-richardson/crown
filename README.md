@@ -150,17 +150,17 @@ misspecified specifications. Across Monte Carlo replicates, we compare point
 estimates with the true effects, estimated variances with empirical variances,
 and 95% confidence-interval coverage with the nominal level.
 
-<p align="center"><strong>sim1_estimates.png</strong><br>
+<p align="center"><strong>sim1_estimates</strong><br>
   <img src="simulation/sim_figures/sim1/sim1_estimates.png"
        alt="Simulation 1 estimates" width="760">
 </p>
 
-<p align="center"><strong>sim1_variance.png</strong><br>
+<p align="center"><strong>sim1_variance</strong><br>
   <img src="simulation/sim_figures/sim1/sim1_variance.png"
        alt="Simulation 1 variances" width="760">
 </p>
 
-<p align="center"><strong>sim1_confidence.png</strong><br>
+<p align="center"><strong>sim1_confidence</strong><br>
   <img src="simulation/sim_figures/sim1/sim1_confidence.png"
        alt="Simulation 1 confidence-interval coverage" width="760">
 </p>
@@ -202,24 +202,24 @@ $$
 \end{cases}
 $$
 
-For each generated dataset, we fit all seven supported estimators. The six
-parametric estimators use linear logistic nuisance models, whereas Proposed DML
-uses cross-fitted XGBoost nuisance models. We summarize the same three Monte
-Carlo properties as in Simulation 1. The figures below display only the four
-Proposed estimators because the three Naive estimators already performed poorly
-under the simpler DGP in Simulation 1.
+In Simulation 2, we evaluate the four Proposed estimators. Proposed G-formula,
+IPW, and AIPW use logistic nuisance models, whereas Proposed DML uses
+cross-fitted XGBoost nuisance models. The three Naive estimators are not
+considered because they already performed poorly under the simpler DGP in
+Simulation 1. We summarize the same three Monte Carlo properties as in
+Simulation 1.
 
-<p align="center"><strong>sim2_estimates.png</strong><br>
+<p align="center"><strong>sim2_estimates</strong><br>
   <img src="simulation/sim_figures/sim2/sim2_estimates.png"
        alt="Simulation 2 estimates" width="1000">
 </p>
 
-<p align="center"><strong>sim2_variance.png</strong><br>
+<p align="center"><strong>sim2_variance</strong><br>
   <img src="simulation/sim_figures/sim2/sim2_variance.png"
        alt="Simulation 2 variances" width="1000">
 </p>
 
-<p align="center"><strong>sim2_confidence.png</strong><br>
+<p align="center"><strong>sim2_confidence</strong><br>
   <img src="simulation/sim_figures/sim2/sim2_confidence.png"
        alt="Simulation 2 confidence-interval coverage" width="1000">
 </p>
