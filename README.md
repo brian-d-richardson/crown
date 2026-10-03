@@ -150,17 +150,17 @@ misspecified specifications. Across Monte Carlo replicates, we compare point
 estimates with the true effects, estimated variances with empirical variances,
 and 95% confidence-interval coverage with the nominal level.
 
-<p align="center"><strong>Parameter estimates</strong><br>
+<p align="center"><strong>sim1_estimates.png</strong><br>
   <img src="simulation/sim_figures/sim1/sim1_estimates.png"
        alt="Simulation 1 estimates" width="760">
 </p>
 
-<p align="center"><strong>Variance estimates</strong><br>
+<p align="center"><strong>sim1_variance.png</strong><br>
   <img src="simulation/sim_figures/sim1/sim1_variance.png"
        alt="Simulation 1 variances" width="760">
 </p>
 
-<p align="center"><strong>Confidence-interval coverage</strong><br>
+<p align="center"><strong>sim1_confidence.png</strong><br>
   <img src="simulation/sim_figures/sim1/sim1_confidence.png"
        alt="Simulation 1 confidence-interval coverage" width="760">
 </p>
@@ -209,17 +209,17 @@ Carlo properties as in Simulation 1. The figures below display only the four
 Proposed estimators because the three Naive estimators already performed poorly
 under the simpler DGP in Simulation 1.
 
-<p align="center"><strong>Parameter estimates</strong><br>
+<p align="center"><strong>sim2_estimates.png</strong><br>
   <img src="simulation/sim_figures/sim2/sim2_estimates.png"
        alt="Simulation 2 estimates" width="1000">
 </p>
 
-<p align="center"><strong>Variance estimates</strong><br>
+<p align="center"><strong>sim2_variance.png</strong><br>
   <img src="simulation/sim_figures/sim2/sim2_variance.png"
        alt="Simulation 2 variances" width="1000">
 </p>
 
-<p align="center"><strong>Confidence-interval coverage</strong><br>
+<p align="center"><strong>sim2_confidence.png</strong><br>
   <img src="simulation/sim_figures/sim2/sim2_confidence.png"
        alt="Simulation 2 confidence-interval coverage" width="1000">
 </p>
