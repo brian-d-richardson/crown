@@ -11,10 +11,10 @@ gfmla_fit(dat, mu_fmla)
 \itemize{
 \item \code{S}: a binary indicator for whether the observation belongs to the trial
 data (\code{S}=1) the auxiliary data (\code{S}=0)
-\item \code{R}: a binary indicator for whether the observation is a responder
-(\code{R}=1) or not (\code{R}=0)
-\item \code{C}: a binary indicator for whether the outcome is censored (\code{C}=1) or
-not (\code{C}=0)
+\item \code{RW}: a binary indicator for whether the observation is a responder
+(\code{RW}=1) or not (\code{RW}=0)
+\item \code{RY}: a binary indicator for whether the outcome is observed (\code{RY}=1) or
+not (\code{RY}=0)
 \item \code{A}: a binary exposure
 \item \code{Y}: a binary outcome
 \item other covariates specified in \code{mu_fmla}

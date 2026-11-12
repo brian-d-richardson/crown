@@ -45,8 +45,8 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
     ## response rate
     p_resp <- 0.5
 
-    ## censoring probability among responders
-    p_cens <- 0.3
+    ## observed ouctome probability among responders
+    p_RY <- 0.7
 
     ## indicator for correctly specified outcome and censoring models
     mu_correct <- T
@@ -64,8 +64,8 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
 
   # simulate data -----------------------------------------------------------
 
-  ## find intercept for R model
-  R_int <- uniroot(
+  ## find intercept for RW model
+  RW_int <- uniroot(
     function(xx) {
       mean(c(plogis(xx),
            plogis(xx - 2),
@@ -76,20 +76,20 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
     interval = c(-20, 20)
   )$root
 
-  ## find intercept for C model
+  ## find intercept for RY model
   grid <- expand.grid(arm = c(0, 1), W1 = c(0, 1))
-  pR_W1 <- plogis(R_int + grid$arm - grid$W1)
+  pRW_W1 <- plogis(RW_int + grid$arm - grid$W1)
   pAW1 <- 0.25
-  C_int <- uniroot(
+  RY_int <- uniroot(
     function(xx) {
 
-      ## P(C = 1 | A, W1)
-      pC_AW1 <- plogis(xx - 0.25 * grid$arm + 0.25 * grid$W1)
+      ## P(RY = 1 | A, W1)
+      pRY_AW1 <- plogis(xx + 0.25 * grid$arm - 0.25 * grid$W1)
 
-      ## P(C = 1 | R = 1)
-      num <- sum(pC_AW1 * pR_W1 * pAW1)
-      den <- sum(pR_W1 * pAW1)
-      num / den - p_cens
+      ## P(RY = 1 | RW = 1)
+      num <- sum(pRY_AW1 * pRW_W1 * pAW1)
+      den <- sum(pRW_W1 * pAW1)
+      num / den - p_RY
     },
     interval = c(-20, 20)
   )$root
@@ -132,11 +132,11 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
       W2 = rnorm(n_trial, 0, 1),
 
       ## response indicator
-      R = rbinom(n_trial, 1, plogis(R_int - 2*A*W1)),
+      RW = rbinom(n_trial, 1, plogis(RW_int - 2*A*W1)),
 
-      ## censoring indicator
-      C = rbinom(n_trial, 1, plogis(C_int - 0.25*A + 0.25*W1)),
-      C = ifelse(R == 1, C, 0),
+      ## outcome observation indicator
+      RY = rbinom(n_trial, 1, plogis(RY_int + 0.25*A - 0.25*W1)),
+      RY = ifelse(RW == 1, RY, 0),
 
       ## potential outcomes
       Y0 = rbinom(n_trial, 1, plogis(-1 + 2*W1 + 0.5*W2 + 0.25*X1)),
@@ -144,7 +144,7 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
 
       ## outcome
       Y = (1 - A)*Y0 + A*Y1,
-      Y = ifelse(R == 1 & C == 0, Y, 0),
+      Y = ifelse(RW == 1 & RY == 1, Y, 0),
 
       ## survey weight of 1 for trial data
       wt = 1)
@@ -173,8 +173,8 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
       wt = ifelse(W1 == 0, 0.75, 0.25),
 
       ## missing response, censoring indicator, and outcome
-      R = 0,
-      C = 0,
+      RW = 0,
+      RY = 0,
       Y = 0)
 
   ## combined data
@@ -191,17 +191,17 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
   if (run.checks) {
 
     ## check response rate
-    print(mean(trial_dat$R)); print(p_resp)
-    trial_dat %>% group_by(A) %>% summarise(p_resp = mean(R)) %>% print()
-    trial_dat %>% group_by(W1) %>% summarise(p_resp = mean(R)) %>% print()
-    trial_dat %>% group_by(A, W1) %>% summarise(p_resp = mean(R)) %>% print()
+    print(mean(trial_dat$RW)); print(p_resp)
+    trial_dat %>% group_by(A) %>% summarise(p_resp = mean(RW)) %>% print()
+    trial_dat %>% group_by(W1) %>% summarise(p_resp = mean(RW)) %>% print()
+    trial_dat %>% group_by(A, W1) %>% summarise(p_resp = mean(RW)) %>% print()
 
     ## check censoring rate
-    trial_dat %>% filter(R == 1) %>% group_by(A, W1) %>%
-      summarise(p_cens = mean(C)) %>% print()
-    trial_dat %>% filter(R == 1) %>%
-      summarise(p_cens = mean(C)) %>% print()
-    print(p_cens)
+    trial_dat %>% filter(RW == 1) %>% group_by(A, W1) %>%
+      summarise(p_RY = mean(RY)) %>% print()
+    trial_dat %>% filter(RW == 1) %>%
+      summarise(p_RY = mean(RY)) %>% print()
+    print(p_RY)
 
     ## check mean potential outcomes in population
     print(eta0); print(eta1); print(eta1 - eta0)
@@ -212,7 +212,7 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
 
     ## check mean potential outcomes among responders
     print(c(eta0, eta1))
-    trial_dat %>% filter(R == 1) %>% summarise(m0 = mean(Y0), m1 = mean(Y1))
+    trial_dat %>% filter(RW == 1) %>% summarise(m0 = mean(Y0), m1 = mean(Y1))
   }
 
   # define parameters for analysis ------------------------------------------
@@ -227,10 +227,10 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
   ## propensity model formula
   if (pi_correct == T) {
     pi_fmla <- Q ~ X1 + W1 + W2
-    C_fmla <- C ~ X1 + W1 + W2
+    RY_fmla <- RY ~ X1 + W1 + W2
   } else {
     pi_fmla <- Q ~ X1 + W2
-    C_fmla <- C ~ X1 + W2
+    RY_fmla <- RY ~ X1 + W2
   }
 
 
@@ -238,7 +238,7 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
 
   ## naive g-formula
   gfmla_naive <- gfmla_fit_naive(
-    dat = filter(dat, S == 1, R ==1),
+    dat = filter(dat, S == 1, RW ==1),
     mu_fmla = mu_fmla)
 
   ## proposed g-formula
@@ -248,8 +248,8 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
 
   ## naive IPW
   ipw_naive <- ipw_fit_naive(
-    dat = filter(dat, S == 1, R == 1),
-    C_fmla = C_fmla)
+    dat = filter(dat, S == 1, RW == 1),
+    RY_fmla = RY_fmla)
 
   ## proposed IPW
   ipw_crown <- ipw_fit(
@@ -258,9 +258,9 @@ sim1_fun <- function(m, n_trial, n_aux, p_resp, p_cens,
 
   ## naive AIPW
   aipw_naive <- aipw_fit_naive(
-    dat = filter(dat, S == 1, R == 1),
+    dat = filter(dat, S == 1, RW == 1),
     mu_fmla = mu_fmla,
-    C_fmla = C_fmla)
+    RY_fmla = RY_fmla)
 
   ## proposed AIPW
   aipw_crown <- aipw_fit(

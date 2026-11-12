@@ -7,10 +7,10 @@
 #' \itemize{
 #'\item `S`: a binary indicator for whether the observation belongs to the trial
 #'data (`S`=1) the auxiliary data (`S`=0)
-#' \item `R`: a binary indicator for whether the observation is a responder
-#' (`R`=1) or not (`R`=0)
-#' \item `C`: a binary indicator for whether the outcome is censored (`C`=1) or
-#' not (`C`=0)
+#' \item `RW`: a binary indicator for whether the observation is a responder
+#' (`RW`=1) or not (`RW`=0)
+#' \item `RY`: a binary indicator for whether the outcome is observed (`RY`=1) or
+#' not (`RY`=0)
 #' \item `A`: a binary exposure
 #' \item `Y`: a binary outcome
 #' \item other covariates specified in `mu_fmla`
@@ -43,11 +43,11 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K,
 
   ## check input
   stopifnot(
-    "dat must contain columns S, R, C, A, Y, wt" =
-      all(c("S", "R", "C", "A", "Y", "wt") %in% names(dat)),
+    "dat must contain columns S, RW, RY, A, Y, wt" =
+      all(c("S", "RW", "RY", "A", "Y", "wt") %in% names(dat)),
     "S must be binary (0/1)" = all(dat$S %in% c(0, 1)),
-    "R must be binary (0/1)" = all(dat$R %in% c(0, 1)),
-    "C must be binary (0/1)" = all(dat$C %in% c(0, 1)),
+    "RW must be binary (0/1)" = all(dat$RW %in% c(0, 1)),
+    "RY must be binary (0/1)" = all(dat$RY %in% c(0, 1)),
     "A must be binary (0/1)" = all(dat$A %in% c(0, 1)),
     "Y must be binary (0/1)" = all(dat$Y %in% c(0, 1)),
     "mu_covariates must be columns of dat" = all(mu_covariates %in% names(dat)),
@@ -60,7 +60,7 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K,
     group_by(S, A) %>%
     mutate(fold = sample(rep(1:K, length.out = n()))) %>%
     ungroup() %>%
-    mutate(Q = S * R * (1 - C))
+    mutate(Q = S * RW * RY)
 
   n <- sum(dat$wt)
 
@@ -90,7 +90,7 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K,
       arguments = arguments)
 
     ## predict probabilities in fold k with with A set to 0 and 1
-    mu_k_ind <- dat_k$S == 0 | dat_k$R == 1
+    mu_k_ind <- dat_k$S == 0 | dat_k$RW == 1
     dat_k$muhat_0 <- dat_k$muhat_1 <- NA
     dat_k$muhat_0[mu_k_ind] <- nonpar_pred(
       mod = mu_mod_0,
@@ -121,7 +121,7 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K,
       method = method,
       arguments = arguments)
 
-    ## predicted Q probabilities among uncensored responders in fold k
+    ## predicted Q probs among responders with observed outcome in fold k
     Q0_k_ind <- dat_k$Q == 1 & dat_k$A == 0
     Q1_k_ind <- dat_k$Q == 1 & dat_k$A == 1
     dat_k$Q_prob <- NA

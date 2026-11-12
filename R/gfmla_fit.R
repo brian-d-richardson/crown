@@ -5,8 +5,8 @@
 #'
 #' @param dat data frame containing the following columns:
 #' \itemize{
-#' \item `C`: a binary indicator for whether the outcome is censored (`C`=1) or
-#' not (`C`=0)
+#' \item `RY`: a binary indicator for whether the outcome is observed (`RY`=1) or
+#' not (`RY`=0)
 #' \item `A`: a binary exposure
 #' \item `Y`: a binary outcome
 #' \item other covariates specified in `mu_fmla`
@@ -32,23 +32,23 @@ gfmla_fit_naive <- function(dat, mu_fmla) {
 
   ## required columns present
   stopifnot(
-    "dat must contain columns C, A, Y, wt" =
-      all(c("C", "A", "Y", "wt") %in% names(dat)))
+    "dat must contain columns RY, A, Y, wt" =
+      all(c("RY", "A", "Y", "wt") %in% names(dat)))
 
   ## required columns are binary (0/1)
   stopifnot(
-    "C must be binary (0/1)" = all(dat$C %in% c(0, 1)),
+    "RY must be binary (0/1)" = all(dat$C %in% c(0, 1)),
     "A must be binary (0/1)" = all(dat$A %in% c(0, 1)),
     "Y must be binary (0/1)" = all(dat$Y %in% c(0, 1)))
 
 
   # fit outcome regression --------------------------------------------------
 
-  ## logistic regression among uncensored
+  ## logistic regression among observed outcomes
   outcome_reg <- glm(
     formula = mu_fmla,
     family = "binomial",
-    data = filter(dat, C == 0),
+    data = filter(dat, RY == 1),
     weights = wt)
 
 
@@ -97,8 +97,7 @@ gfmla_fit_naive <- function(dat, mu_fmla) {
         ## outcome regression estimating function
         psi.lr(data = dat,
                beta = bb,
-               formula = mu_fmla) *
-          (1 - dat$C),
+               formula = mu_fmla) * dat$RY,
 
         ## etahat estimating function
         dat$wt * (plogis(as.vector(X0 %*% bb)) - eh0),
@@ -135,10 +134,10 @@ gfmla_fit_naive <- function(dat, mu_fmla) {
 #' \itemize{
 #'\item `S`: a binary indicator for whether the observation belongs to the trial
 #'data (`S`=1) the auxiliary data (`S`=0)
-#' \item `R`: a binary indicator for whether the observation is a responder
-#' (`R`=1) or not (`R`=0)
-#' \item `C`: a binary indicator for whether the outcome is censored (`C`=1) or
-#' not (`C`=0)
+#' \item `RW`: a binary indicator for whether the observation is a responder
+#' (`RW`=1) or not (`RW`=0)
+#' \item `RY`: a binary indicator for whether the outcome is observed (`RY`=1) or
+#' not (`RY`=0)
 #' \item `A`: a binary exposure
 #' \item `Y`: a binary outcome
 #' \item other covariates specified in `mu_fmla`
@@ -164,25 +163,25 @@ gfmla_fit <- function(dat, mu_fmla) {
 
   ## required columns present
   stopifnot(
-    "dat must contain columns S, R, C, A, Y, wt" =
-      all(c("S", "R", "C", "A", "Y", "wt") %in% names(dat)))
+    "dat must contain columns S, RW, RY, A, Y, wt" =
+      all(c("S", "RW", "RY", "A", "Y", "wt") %in% names(dat)))
 
   ## required columns are binary (0/1)
   stopifnot(
     "S must be binary (0/1)" = all(dat$S %in% c(0, 1)),
-    "R must be binary (0/1)" = all(dat$R %in% c(0, 1)),
-    "C must be binary (0/1)" = all(dat$C %in% c(0, 1)),
+    "RW must be binary (0/1)" = all(dat$RW %in% c(0, 1)),
+    "RY must be binary (0/1)" = all(dat$RY %in% c(0, 1)),
     "A must be binary (0/1)" = all(dat$A %in% c(0, 1)),
     "Y must be binary (0/1)" = all(dat$Y %in% c(0, 1)))
 
 
   # fit outcome regression --------------------------------------------------
 
-  ## logistic regression among uncensored responders
+  ## logistic regression among responders with observed outcome
   outcome_reg <- glm(
     formula = mu_fmla,
     family = "binomial",
-    data = filter(dat, S == 1, R == 1, C == 0),
+    data = filter(dat, S == 1, RW == 1, RY == 1),
     weights = wt)
 
 
@@ -232,7 +231,7 @@ gfmla_fit <- function(dat, mu_fmla) {
         psi.lr(data = dat,
                beta = bb,
                formula = mu_fmla) *
-          dat$S * dat$R * (1 - dat$C),
+          dat$S * dat$RW * dat$RY,
 
         ## etahat estimating function
         (1 - dat$S) * dat$wt * (plogis(as.vector(X0 %*% bb)) - eh0),

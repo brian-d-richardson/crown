@@ -4,13 +4,13 @@
 \alias{aipw_fit_naive}
 \title{Naive AIPW estimator}
 \usage{
-aipw_fit_naive(dat, mu_fmla, C_fmla, pA = 0.5)
+aipw_fit_naive(dat, mu_fmla, RY_fmla, pA = 0.5)
 }
 \arguments{
 \item{dat}{data frame containing the following columns:
 \itemize{
-\item \code{C}: a binary indicator for whether the outcome is censored (\code{C}=1) or
-not (\code{C}=0)
+\item \code{RY}: a binary indicator for whether the outcome is observed (\code{RY}=1)
+or not (\code{RY}=0)
 \item \code{A}: a binary exposure
 \item \code{Y}: a binary outcome
 \item other covariates specified in \code{mu_fmla}
@@ -20,8 +20,8 @@ not (\code{C}=0)
 \item{mu_fmla}{a formula for the outcome regression model using variables in
 \code{dat}}
 
-\item{C_fmla}{a formula for the censoring mechanism regression model using
-variables in \code{dat}}
+\item{RY_fmla}{a formula for the outcome observation mechanism regression
+model using variables in \code{dat}}
 
 \item{pA}{an optional number in (0, 1), the marginal probability of
 treatment (A = 1), default is 0.5.}
@@ -33,7 +33,7 @@ a list containing the following:
 and eta(1)
 \item \code{eta_hat_cov}: a numeric matrix, estimated covariance of \code{eta_hat}
 \item \code{outcome_reg}: a list, results of outcome regression model
-\item \code{censor_reg}: a list, results of censoring regression model
+\item \code{RY_reg}: a list, results of outcome observation regression model
 \item \code{dat}: a data frame including a column for propensity score weights
 }
 }

@@ -5,16 +5,16 @@
 #'
 #' @param dat data frame containing the following columns:
 #' \itemize{
-#' \item `C`: a binary indicator for whether the outcome is censored (`C`=1) or
-#' not (`C`=0)
+#' \item `RY`: a binary indicator for whether the outcome is observed (`RY`=1) or
+#' not (`RY`=0)
 #' \item `A`: a binary exposure
 #' \item `Y`: a binary outcome
 #' \item other covariates specified in `mu_fmla`
 #' \item `wt`: survey weights
 #' }
 #'
-#' @param C_fmla a formula for the censoring mechanism regression model using
-#' variables in `dat`
+#' @param RY_fmla a formula for the outcome observation mechanism regression
+#' model using variables in `dat`
 #'
 #' @param pA an optional number in (0, 1), the marginal probability of
 #' treatment (A = 1), default is 0.5.
@@ -24,43 +24,42 @@
 #' \item `eta_hat`: a numeric vector estimated mean potential outcomes eta(0)
 #' and eta(1)
 #' \item `eta_hat_cov`: a numeric matrix, estimated covariance of `eta_hat`
-#' \item `censor_reg`: a list, results of censoring regression model
+#' \item `RY_reg`: a list, results of outcome observation regression model
 #' \item `dat`: a data frame including a column for propensity score weights
 #' }
 #'
 #' @export
-ipw_fit_naive <- function(dat, C_fmla, pA = 0.5) {
+ipw_fit_naive <- function(dat, RY_fmla, pA = 0.5) {
 
 
   # check input -------------------------------------------------------------
 
   ## required columns present
   stopifnot(
-    "dat must contain columns C, A, Y, wt" =
-      all(c("C", "A", "Y") %in% names(dat)))
+    "dat must contain columns RY, A, Y, wt" =
+      all(c("RY", "A", "Y") %in% names(dat)))
 
   ## required columns are binary (0/1)
   stopifnot(
-    "C must be binary (0/1)" = all(dat$C %in% c(0, 1)),
+    "RY must be binary (0/1)" = all(dat$RY %in% c(0, 1)),
     "A must be binary (0/1)" = all(dat$A %in% c(0, 1)),
     "Y must be binary (0/1)" = all(dat$Y %in% c(0, 1)))
 
 
-  # censoring model ---------------------------------------------------------
+  # RY model ---------------------------------------------------------
 
-  ## logistic regression model for censoring mechanism
-  censor_reg <- glm(
-    formula = C_fmla,
+  ## logistic regression model for outcome observation mechanism
+  RY_reg <- glm(
+    formula = RY_fmla,
     family = "binomial",
     data = dat,
     weights = wt)
 
-  ## predicted values from censoring model
-  dat$piC <-
-    1 - predict(
-      censor_reg,
-      newdata = dat,
-      type = "response")
+  ## predicted values from RY model
+  dat$piRY <- predict(
+    RY_reg,
+    newdata = dat,
+    type = "response")
 
   ## treatment assignment probabilities
   dat$piA <- ifelse(dat$A == 1, pA, 1 - pA)
@@ -68,12 +67,12 @@ ipw_fit_naive <- function(dat, C_fmla, pA = 0.5) {
 
   # IPW estimator -----------------------------------------------------------
 
-  ## joint probabilities of being uncensored and having treatment A
-  dat$pihat <- dat$piC * dat$piA
+  ## joint probabilities of having treatment A and observed outcome
+  dat$pihat <- dat$piRY * dat$piA
 
   ## Hajek estimator of trial sample sizes by A
   n_trial_hat <- dat %>%
-    filter(C == 0) %>%
+    filter(RY == 1) %>%
     mutate(
       term_0 = (1 - A) / pihat,
       term_1 = A / pihat) %>%
@@ -85,10 +84,10 @@ ipw_fit_naive <- function(dat, C_fmla, pA = 0.5) {
   ## IPW estimator
   etahat <- dat %>%
     mutate(
-      term_0 = ifelse(C == 0,
+      term_0 = ifelse(RY == 1,
                       (1 - A) * Y / pihat,
                       0),
-      term_1 = ifelse(C == 0,
+      term_1 = ifelse(RY == 1,
                       A * Y / pihat,
                       0)) %>%
     summarise(
@@ -99,13 +98,13 @@ ipw_fit_naive <- function(dat, C_fmla, pA = 0.5) {
   # variance estimator ------------------------------------------------------
 
   ## design matrix for variance estimation
-  X_cens <- model.matrix(censor_reg, data = dat)
+  X_RY <- model.matrix(RY_reg, data = dat)
 
   ## variance estimator
   est_var <- get.sand.est(
     param = c(etahat$etahat_0, etahat$etahat_1,
               n_trial_hat,
-              coef(censor_reg)),
+              coef(RY_reg)),
     n = nrow(dat),
     get.psi = function(xx) {
 
@@ -114,39 +113,39 @@ ipw_fit_naive <- function(dat, C_fmla, pA = 0.5) {
       eh1 <- xx[2]
       nh0 <- xx[3]
       nh1 <- xx[4]
-      bb_cens <- xx[4 + 1:length(coef(censor_reg))]
+      bb_RY <- xx[4 + 1:length(coef(RY_reg))]
 
       ## re-create weights using supplied parameter
-      piC_ <- 1 - plogis(as.vector(X_cens %*% bb_cens))
-      pihat_ <- piC_ * ifelse(dat$A == 1, pA, 1 - pA)
+      piRY_ <- plogis(as.vector(X_RY %*% bb_RY))
+      pihat_ <- piRY_ * ifelse(dat$A == 1, pA, 1 - pA)
 
       ## stacked estimating function
       cbind(
 
-        ## censoring regression estimating function
+        ## RY regression estimating function
         psi.lr(data = dat,
-               beta = bb_cens,
-               formula = C_fmla),
+               beta = bb_RY,
+               formula = RY_fmla),
 
         ## etahat estimating function
         ifelse(
-          dat$C == 0 & dat$A == 0,
+          dat$RY == 1 & dat$A == 0,
           1 / pihat_,
           0) - nh0,
 
         ifelse(
-          dat$C == 0 & dat$A == 1,
+          dat$RY == 1 & dat$A == 1,
           1 / pihat_,
           0) - nh1,
 
         ## etahat estimating function
         ifelse(
-          dat$C == 0 & dat$A == 0,
+          dat$RY == 1 & dat$A == 0,
           (nrow(dat) / nh0) * dat$Y / pihat_,
           0) - eh0,
 
         ifelse(
-          dat$C == 0 & dat$A == 1,
+          dat$RY == 1 & dat$A == 1,
           (nrow(dat) / nh1) * dat$Y / pihat_,
           0) - eh1)
     }
@@ -164,8 +163,8 @@ ipw_fit_naive <- function(dat, C_fmla, pA = 0.5) {
     ## estimated covariance of eta_hat
     eta_hat_cov = est_var[1:2, 1:2],
 
-    ## censoring regression model results
-    censor_reg = censor_reg,
+    ## RY regression model results
+    RY_reg = RY_reg,
 
     ## data set including estimated propensity score weights
     dat = dat)
@@ -186,10 +185,10 @@ ipw_fit_naive <- function(dat, C_fmla, pA = 0.5) {
 #' \itemize{
 #'\item `S`: a binary indicator for whether the observation belongs to the trial
 #'data (`S`=1) the auxiliary data (`S`=0)
-#' \item `R`: a binary indicator for whether the observation is a responder
-#' (`R`=1) or not (`R`=0)
-#' \item `C`: a binary indicator for whether the outcome is censored (`C`=1) or
-#' not (`C`=0)
+#' \item `RW`: a binary indicator for whether the observation is a responder
+#' (`RW`=1) or not (`RW`=0)
+#' \item `RY`: a binary indicator for whether the outcome is observed (`RY`=1) or
+#' not (`RY`=0)
 #' \item `A`: a binary exposure
 #' \item `Y`: a binary outcome
 #' \item other covariates specified in `mu_fmla`
@@ -217,14 +216,14 @@ ipw_fit <- function(dat, pi_fmla) {
 
   ## required columns present
   stopifnot(
-    "dat must contain columns S, R, C, A, Y, wt" =
-      all(c("S", "R", "C", "A", "Y", "wt") %in% names(dat)))
+    "dat must contain columns S, RW, RY, A, Y, wt" =
+      all(c("S", "RW", "RY", "A", "Y", "wt") %in% names(dat)))
 
   ## required columns are binary (0/1)
   stopifnot(
     "S must be binary (0/1)" = all(dat$S %in% c(0, 1)),
-    "R must be binary (0/1)" = all(dat$R %in% c(0, 1)),
-    "C must be binary (0/1)" = all(dat$C %in% c(0, 1)),
+    "RW must be binary (0/1)" = all(dat$RW %in% c(0, 1)),
+    "RY must be binary (0/1)" = all(dat$RY %in% c(0, 1)),
     "A must be binary (0/1)" = all(dat$A %in% c(0, 1)),
     "Y must be binary (0/1)" = all(dat$Y %in% c(0, 1)))
 
@@ -233,7 +232,7 @@ ipw_fit <- function(dat, pi_fmla) {
 
   ## add Q labels to data
   dat <- dat %>%
-    mutate(Q = S * R * (1 - C))
+    mutate(Q = S * RW * RY)
 
   ## restrict sample to Q = 1 or S = 0
   restricted_dat <- dat %>%
@@ -252,7 +251,7 @@ ipw_fit <- function(dat, pi_fmla) {
     data = filter(restricted_dat, A == 1 | Q == 0),
     weights = wt)
 
-  ## estimated Q probabilities among uncensored responders
+  ## estimated Q probabilities among responders with observed outcome
   Q_ind <- dat$Q == 1
   dat$Q_prob <- NA_real_
   dat$Q_prob[Q_ind & dat$A == 0] <-
