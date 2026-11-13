@@ -14,26 +14,24 @@
 #' Runs one selected estimator using logistic regression or cross-fitted XGBoost.
 #'
 #' @param trial_data,auxiliary_data Data frames for the trial and auxiliary sample.
-#' @param outcome Binary outcome column; required for uncensored responders.
+#' @param outcome Binary outcome column; required for responders with observed outcome
 #' @param treatment Cluster-level treatment column in the trial.
 #' @param response Trial response indicator column (1 = responder).
-#' @param censoring Censoring indicator column (1 = censored).
-#' @param cluster Cluster identifier column shared by both samples. Treatment
-#'   must be constant within each cluster.
+#' @param observed_outcome observed outcome indicator column (1 = observed).
 #' @param covariates Shared baseline covariate column names, including the
 #'   cluster-level covariates needed for conditional independence.
 #' @param version `"proposed"` (default) or `"naive"`. Proposed estimators use
 #'   auxiliary covariates; naive estimators use trial responders alone.
-#' @param estimator `"aipw"` (default), `"gformula"`, or `"ipw"`.
+#' @param estimator `"aipw"` (default), `"gformula"`, `"ipw"`, or `"dml"`.
 #'   Logistic regression supports all three estimators and both versions.
 #' @param model `"xgboost"` (default) or `"logistic"`. XGBoost is supported
-#'   only for Proposed AIPW, which is reported as DML.
+#'   only for Proposed DML.
 #' @param auxiliary_weight Optional auxiliary sampling-weight column. Omit for
 #'   equal weights. Supplied weights are normalized to have mean one.
 #' @param treatment_values Control and treatment values, in that order.
-#' @param outcome_formula,propensity_formula,censoring_formula Optional logistic
-#'   formulas using standardized names `Y`, `A`, `Q`, `C`, and the covariates.
-#'   Defaults are `Y ~ A * (covariates)`, `Q ~ covariates`, and `C ~ covariates`.
+#' @param outcome_formula,propensity_formula,observed_outcome_formula Optional logistic
+#'   formulas using standardized names `Y`, `A`, `Q`, `RY`, and the covariates.
+#'   Defaults are `Y ~ A * (covariates)`, `Q ~ covariates`, and `RY ~ covariates`.
 #' @param K Number of outer cross-fitting folds (default 5); used only by
 #'   XGBoost, not tuning CV.
 #' @param arguments Optional XGBoost settings, e.g., `list(nrounds = 100L)`;
@@ -61,17 +59,16 @@ crown <- function(
     outcome,
     treatment,
     response,
-    censoring,
-    cluster,
+    observed_outcome,
     covariates,
     version = c("proposed", "naive"),
-    estimator = c("aipw", "gformula", "ipw"),
+    estimator = c("aipw", "gformula", "ipw", "dml"),
     model = c("xgboost", "logistic"),
     auxiliary_weight = NULL,
     treatment_values = c(0, 1),
     outcome_formula = NULL,
     propensity_formula = NULL,
-    censoring_formula = NULL,
+    observed_outcome_formula = NULL,
     K = 5L,
     arguments = NULL,
     random_seed = 1L) {
@@ -79,14 +76,14 @@ crown <- function(
   version <- match.arg(version)
   model <- match.arg(model)
   estimator <- match.arg(estimator)
-  if (model == "xgboost" && (version != "proposed" || estimator != "aipw")) {
-    stop("XGBoost is supported only for Proposed AIPW (DML).")
+  if (model == "xgboost" && (version != "proposed" || estimator != "dml")) {
+    stop("XGBoost is supported only for Proposed DML.")
   }
 
   # Prepare the combined trial and auxiliary data.
   data <- .prepare_crown_data(
-    trial_data, auxiliary_data, outcome, treatment, response, censoring,
-    cluster, covariates, auxiliary_weight, treatment_values
+    trial_data, auxiliary_data, outcome, treatment, response, observed_outcome,
+    covariates, auxiliary_weight, treatment_values
   )
 
   dml <- NULL
@@ -100,10 +97,10 @@ crown <- function(
     if (is.null(propensity_formula)) {
       propensity_formula <- as.formula(paste("Q ~", covariate_terms))
     }
-    if (is.null(censoring_formula)) {
-      censoring_formula <- as.formula(paste("C ~", covariate_terms))
+    if (is.null(observed_outcome_formula)) {
+      observed_outcome_formula <- as.formula(paste("RY ~", observed_outcome_terms))
     }
-    weight_formula <- if (version == "naive") censoring_formula else propensity_formula
+    weight_formula <- if (version == "naive") observed_outcome_formula else propensity_formula
 
     # Fit only the selected estimator.
     if (estimator == "gformula") {
@@ -141,21 +138,15 @@ crown <- function(
 #' @keywords internal
 #' @noRd
 .prepare_crown_data <- function(
-    trial_data, auxiliary_data, outcome, treatment, response, censoring,
-    cluster, covariates, auxiliary_weight, treatment_values) {
+    trial_data, auxiliary_data, outcome, treatment, response, observed_outcome,
+    covariates, auxiliary_weight, treatment_values) {
   A <- match(trial_data[[treatment]], treatment_values) - 1L
-  assignment <- unique(data.frame(cluster = trial_data[[cluster]], A = A))
-  if (anyNA(A) || anyDuplicated(assignment$cluster)) {
-    stop("Each trial cluster must have one treatment value from treatment_values.")
-  }
-  aux_A <- A[match(auxiliary_data[[cluster]], trial_data[[cluster]])]
-  if (anyNA(aux_A)) stop("Auxiliary cluster identifiers must match trial clusters.")
 
-  R <- trial_data[[response]]
-  C <- trial_data[[censoring]]
+  RW <- trial_data[[response]]
+  RY <- trial_data[[observed_outcome]]
   Y <- trial_data[[outcome]]
-  C[R == 0L] <- 0L
-  Y[R == 0L | C == 1L] <- 0L
+  RY[RW == 0L] <- 0L
+  Y[RW == 0L | RY == 0L] <- 0L
 
   auxiliary_weights <- if (is.null(auxiliary_weight)) {
     rep(1, nrow(auxiliary_data))
@@ -166,13 +157,11 @@ crown <- function(
 
   trial <- cbind(
     trial_data[covariates],
-    data.frame(.cluster = trial_data[[cluster]], A = A, S = 1L,
-               R = R, C = C, Y = Y, wt = 1)
+    data.frame(A = A, S = 1L, RW = RW, RY = RY, Y = Y, wt = 1)
   )
   auxiliary <- cbind(
     auxiliary_data[covariates],
-    data.frame(.cluster = auxiliary_data[[cluster]], A = aux_A, S = 0L,
-               R = 0L, C = 0L, Y = 0L, wt = auxiliary_weights)
+    data.frame(A = aux_A, S = 0L, RW = 0L, RY = 0L, Y = 0L, wt = auxiliary_weights)
   )
   rbind(trial, auxiliary)
 }

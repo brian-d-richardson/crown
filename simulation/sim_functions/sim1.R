@@ -2,7 +2,7 @@
 
 # Generate one trial and one auxiliary sample.
 generate_sim1_data <- function(
-    n_clusters, n_trial, n_auxiliary, p_response, p_censoring, seed) {
+    n_clusters, n_trial, n_auxiliary, p_response, p_obsout, seed) {
 
   response_intercept <- uniroot(
     function(value) {
@@ -14,13 +14,13 @@ generate_sim1_data <- function(
   response_probability <- plogis(
     response_intercept + combinations$A - combinations$W1
   )
-  censoring_intercept <- uniroot(
+  obsout_intercept <- uniroot(
     function(value) {
-      censoring_probability <- plogis(
-        value - 0.25 * combinations$A + 0.25 * combinations$W1
+      obsout_probability <- plogis(
+        value + 0.25 * combinations$A - 0.25 * combinations$W1
       )
-      sum(censoring_probability * response_probability * 0.25) /
-        sum(response_probability * 0.25) - p_censoring
+      sum(obsout_probability * response_probability * 0.25) /
+        sum(response_probability * 0.25) - p_obsout
     },
     c(-20, 20)
   )$root
@@ -39,21 +39,21 @@ generate_sim1_data <- function(
   X1 <- cluster_risk[cluster]
   W1 <- rbinom(n_trial, 1, 0.5)
   W2 <- rnorm(n_trial)
-  R <- rbinom(
+  RW <- rbinom(
     n_trial, 1, plogis(response_intercept - 2 * A * W1)
   )
-  C <- rbinom(
-    n_trial, 1, plogis(censoring_intercept - 0.25 * A + 0.25 * W1)
+  RY <- rbinom(
+    n_trial, 1, plogis(obsout_intercept + 0.25 * A - 0.25 * W1)
   )
-  C[R == 0L] <- 0L
+  obsout[RW == 0L] <- 0L
   probability0 <- plogis(-1 + 2 * W1 + 0.5 * W2 + 0.25 * X1)
   probability1 <- plogis(-W1 - 0.5 * W2)
   Y0 <- rbinom(n_trial, 1, probability0)
   Y1 <- rbinom(n_trial, 1, probability1)
   Y <- (1 - A) * Y0 + A * Y1
-  Y[R == 0L | C == 1L] <- 0L
+  Y[RW == 0L | RY == 0L] <- 0L
   trial <- data.frame(
-    id = seq_len(n_trial), cluster, X1, W1, W2, A, R, C, Y, wt = 1, S = 1L
+    id = seq_len(n_trial), cluster, X1, W1, W2, A, RW, RY, Y, wt = 1, S = 1L
   )
 
   cluster <- rep(seq_len(n_clusters), length.out = n_auxiliary)
@@ -66,8 +66,8 @@ generate_sim1_data <- function(
     W1,
     W2 = rnorm(n_auxiliary),
     A,
-    R = 0L,
-    C = 0L,
+    RW = 0L,
+    RY = 0L,
     Y = 0L,
     wt = ifelse(W1 == 0L, 0.75, 0.25),
     S = 0L
@@ -106,7 +106,7 @@ fit_sim1_estimators <- function(data, mu_correct, pi_correct) {
 
 # Add truths, contrasts, and variance estimates to fitted risks.
 .complete_sim1_result <- function(
-    result, generated, seed, n_clusters, p_response, p_censoring,
+    result, generated, seed, n_clusters, p_response, p_obsout,
     mu_correct, pi_correct, K) {
   result$rdhat <- result$etahat_1 - result$etahat_0
   result$rrhat <- result$etahat_1 / result$etahat_0
@@ -123,7 +123,7 @@ fit_sim1_estimators <- function(data, mu_correct, pi_correct) {
   result$n_trial <- generated$n_trial
   result$n_aux <- generated$n_auxiliary
   result$p_resp <- p_response
-  result$p_cens <- p_censoring
+  result$p_obsout <- p_obsout
   result$mu_correct <- mu_correct
   result$pi_correct <- pi_correct
   result$K <- K
@@ -133,7 +133,7 @@ fit_sim1_estimators <- function(data, mu_correct, pi_correct) {
 # Run the Monte Carlo study.
 run_sim1 <- function(
     sample_sizes, run_id, out_dir,
-    n_clusters = 20L, p_response = 0.5, p_censoring = 0.3,
+    n_clusters = 20L, p_response = 0.5, p_obsout = 0.3,
     mc_reps = 30L, base_seed = 11000000L, replicates = seq_len(mc_reps),
     K = 5L, arguments = NULL) {
 
@@ -159,7 +159,7 @@ run_sim1 <- function(
   for (i in seq_len(nrow(grid))) {
     generated <- generate_sim1_data(
       n_clusters, grid$n_trial[i], grid$n_auxiliary[i],
-      p_response, p_censoring, grid$seed[i]
+      p_response, p_obsout, grid$seed[i]
     )
 
     for (j in seq_len(nrow(scenarios))) {
@@ -167,22 +167,22 @@ run_sim1 <- function(
         generated$data, scenarios$mu_correct[j], scenarios$pi_correct[j]
       )
       results <- rbind(results, .complete_sim1_result(
-        estimates, generated, grid$seed[i], n_clusters, p_response, p_censoring,
+        estimates, generated, grid$seed[i], n_clusters, p_response, p_obsout,
         scenarios$mu_correct[j], scenarios$pi_correct[j], K
       ))
     }
 
     correct_outcome <- Y ~ A * (X1 + W1 + W2)
-    correct_censoring <- C ~ X1 + W1 + W2
+    correct_obsout <- RY ~ X1 + W1 + W2
     naive <- rbind(
       fit_gformula(generated$data, correct_outcome, "naive"),
-      fit_ipw(generated$data, correct_censoring, "naive"),
-      fit_aipw(generated$data, correct_outcome, correct_censoring, "naive")
+      fit_ipw(generated$data, correct_obsout, "naive"),
+      fit_aipw(generated$data, correct_outcome, correct_obsout, "naive")
     )
     naive$Estimator <- c("G-Formula", "IPW", "AIPW")
     naive$Version <- "Naive"
     results <- rbind(results, .complete_sim1_result(
-      naive, generated, grid$seed[i], n_clusters, p_response, p_censoring,
+      naive, generated, grid$seed[i], n_clusters, p_response, p_obsout,
       TRUE, TRUE, K
     ))
 
@@ -194,7 +194,7 @@ run_sim1 <- function(
     dml$Estimator <- "DML"
     dml$Version <- "Proposed"
     results <- rbind(results, .complete_sim1_result(
-      dml, generated, grid$seed[i], n_clusters, p_response, p_censoring,
+      dml, generated, grid$seed[i], n_clusters, p_response, p_obsout,
       TRUE, TRUE, K
     ))
   }
