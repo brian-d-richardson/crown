@@ -5,11 +5,12 @@
 #' Fits either the naive or proposed parametric inverse-probability weighted
 #' estimator for the two mean potential outcomes.
 #'
-#' @param data Combined data containing `S`, `R`, `C`, `A`, `Y`, `wt`, and the
+#' @param data Combined data containing `S`, `RW`, `RY`, `A`, `Y`, `wt`, and the
 #'   variables in `weight_formula`.
-#' @param weight_formula A logistic formula for censoring `C` (naive) or
-#'   selection `Q = S * R * (1 - C)` (proposed). The proposed model compares
-#'   uncensored trial responders in each treatment arm with the auxiliary sample.
+#' @param weight_formula A logistic formula for outcome observation `RY` (naive)
+#' or selection `Q = S * RW * RY` (proposed). The proposed model compares
+#'  trial responders with observed outcome in each treatment arm with the
+#'  auxiliary sample.
 #' @param version `"naive"` or `"proposed"`.
 #' @return Estimated risks and their covariance entries.
 #' @export
@@ -17,47 +18,47 @@ fit_ipw <- function(
     data, weight_formula, version = c("naive", "proposed")) {
   version <- match.arg(version)
   if (version == "naive") {
-    data <- data[data$S == 1L & data$R == 1L, ]
+    data <- data[data$S == 1L & data$RW == 1L, ]
     return(.fit_ipw_naive(data, weight_formula))
   }
   .fit_ipw_proposed(data, weight_formula)
 }
-#' Fit the naive IPW calculation
+#' Fit the naive IPW estimator
 #'
-#' Fits the censoring model and treatment-specific Hajek estimates.
+#' Fits the outcome observation model and treatment-specific Hajek estimates.
 #' @param data Trial-responder data.
-#' @param censoring_formula A logistic censoring-model formula.
+#' @param RY_formula A formula for the outcome observation model.
 #' @return Estimated risks and their covariance entries.
 #' @keywords internal
 #' @noRd
-.fit_ipw_naive <- function(data, censoring_formula) {
-  # Censoring probabilities.
-  censoring_fit <- glm(
-    censoring_formula, family = binomial(), data = data
+.fit_ipw_naive <- function(data, RY_formula) {
+  # observed outcome probabilities.
+  RY_fit <- glm(
+    RY_formula, family = binomial(), data = data
   )
-  design <- model.matrix(censoring_formula, data)
-  pi_c <- 1 - predict(censoring_fit, data, type = "response")
-  observed0 <- data$C == 0L & data$A == 0L
-  observed1 <- data$C == 0L & data$A == 1L
+  design <- model.matrix(RY_formula, data)
+  pi_RY <- predict(RY_fit, data, type = "response")
+  observed0 <- data$RY == 1L & data$A == 0L
+  observed1 <- data$RY == 1L & data$A == 1L
 
   # Hajek estimates.
-  denominator0 <- sum(1 / pi_c[observed0])
-  denominator1 <- sum(1 / pi_c[observed1])
-  eta0 <- sum(data$Y[observed0] / pi_c[observed0]) / denominator0
-  eta1 <- sum(data$Y[observed1] / pi_c[observed1]) / denominator1
+  denominator0 <- sum(1 / pi_RY[observed0])
+  denominator1 <- sum(1 / pi_RY[observed1])
+  eta0 <- sum(data$Y[observed0] / pi_RY[observed0]) / denominator0
+  eta1 <- sum(data$Y[observed1] / pi_RY[observed1]) / denominator1
 
   # Sandwich covariance.
   covariance <- .sandwich_covariance(
-    c(eta0, eta1, denominator0, denominator1, coef(censoring_fit)),
+    c(eta0, eta1, denominator0, denominator1, coef(RY_fit)),
     function(value) {
       beta <- value[-seq_len(4)]
-      pi_c_value <- 1 - plogis(as.vector(design %*% beta))
+      pi_RY_value <- plogis(as.vector(design %*% beta))
       cbind(
-        .logistic_score(data, beta, censoring_formula),
-        ifelse(observed0, 1 / pi_c_value, 0) - value[3] / nrow(data),
-        ifelse(observed1, 1 / pi_c_value, 0) - value[4] / nrow(data),
-        ifelse(observed0, nrow(data) * data$Y / pi_c_value / value[3], 0) - value[1],
-        ifelse(observed1, nrow(data) * data$Y / pi_c_value / value[4], 0) - value[2]
+        .logistic_score(data, beta, RY_formula),
+        ifelse(observed0, 1 / pi_RY_value, 0) - value[3] / nrow(data),
+        ifelse(observed1, 1 / pi_RY_value, 0) - value[4] / nrow(data),
+        ifelse(observed0, nrow(data) * data$Y / pi_RY_value / value[3], 0) - value[1],
+        ifelse(observed1, nrow(data) * data$Y / pi_RY_value / value[4], 0) - value[2]
       )
     },
     nrow(data)
@@ -66,24 +67,24 @@ fit_ipw <- function(
   .eta_result(eta0, eta1, covariance)
 }
 
-#' Fit the proposed IPW calculation
+#' Fit the proposed IPW estimator
 #'
-#' Fits arm-specific selection models and treatment-specific Hajek estimates.
+#' Fits treatment-specific selection models and Hajek estimates.
 #' @param data Combined trial and auxiliary data.
-#' @param propensity_formula A logistic sample-membership formula.
+#' @param propensity_formula formula for propensity score model
 #' @return Estimated risks and their covariance entries.
 #' @keywords internal
 #' @noRd
 .fit_ipw_proposed <- function(data, propensity_formula) {
   # Observed outcomes and auxiliary rows.
-  data$Q <- data$S * data$R * (1L - data$C)
+  data$Q <- data$S * data$RW * data$RY
   restricted <- data$Q == 1L | data$S == 0L
   fit0 <- restricted & (data$A == 0L | data$Q == 0L)
   fit1 <- restricted & (data$A == 1L | data$Q == 0L)
   data0 <- data[fit0, ]
   data1 <- data[fit1, ]
 
-  # Arm-specific selection models.
+  # treatment-specific selection models.
   propensity0 <- do.call(glm, list(
     formula = propensity_formula, family = binomial(),
     data = data0, weights = data0$wt

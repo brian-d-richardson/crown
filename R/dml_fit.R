@@ -1,22 +1,22 @@
 #' Proposed cross-fitted DML estimator
 #'
-#' Fits the Proposed AIPW estimator with cross-fitted XGBoost nuisance models.
+#' Fits the Proposed DML estimator with cross-fitted XGBoost nuisance models.
 #'
 #' @param dat Combined data frame containing:
 #' \itemize{
 #'   \item `S`: trial (1) or auxiliary (0);
 #'   \item `A`: cluster treatment (0 or 1), in both samples;
-#'   \item `R`: response indicator;
-#'   \item `C`: censoring indicator (1 = censored);
+#'   \item `RW`: response indicator;
+#'   \item `RY`: outcome observation indicator (1 = observed);
 #'   \item `Y`: binary outcome;
 #'   \item `wt`: weight (1 for trial rows, positive sampling weights for auxiliary rows);
 #'   \item the baseline covariates used in the nuisance models.
 #' }
-#'   Use zero placeholders for unobserved `R`, `C`, and `Y`. Nonresponders'
+#'   Use zero placeholders for unobserved `RW`, `RY`, and `Y`. Nonresponders'
 #'   covariates may be missing because those rows are not used in nuisance fits.
 #' @param mu_covariates,pi_covariates Character vectors of outcome and selection
 #'   predictor names, respectively; not formulas. Include relevant cluster
-#'   covariates; do not include `A`, `S`, `R`, `C`, `Y`, or `Q`.
+#'   covariates; do not include `A`, `S`, `RW`, `RY`, `Y`, or `Q`.
 #' @param K Number of outer cross-fitting folds, at least two.
 #' @param arguments Optional XGBoost settings, e.g.,
 #'   `list(nrounds = 100L, max_depth = 6L)`.
@@ -54,7 +54,7 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     }
   }
 
-  dat$Q <- dat$S * dat$R * (1 - dat$C)
+  dat$Q <- dat$S * dat$RW * dat$RY
   dat$muhat_0 <- dat$muhat_1 <- dat$Q_prob <- dat$pihat <- NA_real_
   fold_estimates <- data.frame(
     etahat_0 = numeric(K), etahat_1 = numeric(K),

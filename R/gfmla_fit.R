@@ -3,9 +3,9 @@
 #' Fit a parametric G-formula estimator
 #'
 #' Fits either the naive or proposed parametric G-formula estimator for the two
-#' mean potential outcomes.
+#' mean potential outcome.
 #'
-#' @param data Combined data containing `S`, `R`, `C`, `A`, `Y`, `wt`, and the
+#' @param data Combined data containing `S`, `RW`, `RY`, `A`, `Y`, `wt`, and the
 #'   variables in `outcome_formula`.
 #' @param outcome_formula A logistic outcome-regression formula.
 #' @param version `"naive"` or `"proposed"`.
@@ -16,13 +16,13 @@ fit_gformula <- function(data, outcome_formula, version = c("naive", "proposed")
   proposed <- version == "proposed"
 
   if (!proposed) {
-    data <- data[data$S == 1L & data$R == 1L, ]
+    data <- data[data$S == 1L & data$RW == 1L, ]
   }
 
   fit_rows <- if (proposed) {
-    data$S == 1L & data$R == 1L & data$C == 0L
+    data$S == 1L & data$RW == 1L & data$RY == 1L
   } else {
-    data$C == 0L
+    data$RY == 1L
   }
   target_rows <- if (proposed) data$S == 0L else rep(TRUE, nrow(data))
 

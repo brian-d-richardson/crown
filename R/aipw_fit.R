@@ -5,12 +5,12 @@
 #' Fits either the naive or proposed parametric augmented inverse-probability
 #' weighted estimator for the two mean potential outcomes.
 #'
-#' @param data Combined data containing `S`, `R`, `C`, `A`, `Y`, `wt`, and the
+#' @param data Combined data containing `S`, `RW`, `RY`, `A`, `Y`, `wt`, and the
 #'   variables in the two formulas.
 #' @param outcome_formula A logistic outcome-regression formula.
-#' @param weight_formula A logistic formula for censoring `C` (naive) or
-#'   selection `Q = S * R * (1 - C)` (proposed). The proposed model compares
-#'   uncensored trial responders in each treatment arm with the auxiliary sample.
+#' @param weight_formula A logistic formula for outcome observation `RY` (naive)
+#' or selection `Q = S * RW * RY` (proposed). The proposed model compares trial
+#' responders with observed outcome in each treatment arm with the auxiliary sample.
 #' @param version `"naive"` or `"proposed"`.
 #' @return Estimated risks and their covariance entries.
 #' @export
@@ -26,36 +26,36 @@ fit_aipw <- function(
 }
 #' Fit the naive parametric AIPW estimator
 #'
-#' Fits the outcome and censoring models among trial responders.
+#' Fits the outcome and RY models among trial responders.
 #' @param data Trial-responder data.
 #' @param outcome_formula A logistic outcome-regression formula.
-#' @param censoring_formula A logistic censoring-model formula.
+#' @param RY_formula A formula for the outcome observation model.
 #' @return Estimated risks and their covariance entries.
 #' @keywords internal
 #' @noRd
-.fit_aipw_naive <- function(data, outcome_formula, censoring_formula) {
+.fit_aipw_naive <- function(data, outcome_formula, RY_formula) {
   n <- nrow(data)
-  observed0 <- data$C == 0L & data$A == 0L
-  observed1 <- data$C == 0L & data$A == 1L
+  observed0 <- data$RY == 1L & data$A == 0L
+  observed1 <- data$RY == 1L & data$A == 1L
 
-  # Fit the outcome and censoring models.
+  # Fit the outcome and RY models.
   outcome_fit <- glm(
-    outcome_formula, family = binomial(), data = data[data$C == 0L, ]
+    outcome_formula, family = binomial(), data = data[data$RY == 1L, ]
   )
-  censoring_fit <- glm(censoring_formula, family = binomial(), data = data)
+  RY_fit <- glm(RY_formula, family = binomial(), data = data)
 
   data0 <- data1 <- data
   data0$A <- 0L
   data1$A <- 1L
   design0 <- model.matrix(outcome_formula, data0)
   design1 <- model.matrix(outcome_formula, data1)
-  design_c <- model.matrix(censoring_formula, data)
+  design_RY <- model.matrix(RY_formula, data)
 
   # Build each observation's AIPW contribution.
-  aipw_contributions <- function(beta_mu, beta_c) {
+  aipw_contributions <- function(beta_mu, beta_RY) {
     mu0 <- plogis(as.vector(design0 %*% beta_mu))
     mu1 <- plogis(as.vector(design1 %*% beta_mu))
-    pi <- 1 - plogis(as.vector(design_c %*% beta_c))
+    pi <- plogis(as.vector(design_RY %*% beta_RY))
     h0 <- sum(1 / pi[observed0])
     h1 <- sum(1 / pi[observed1])
     phi0 <- mu0
@@ -68,8 +68,8 @@ fit_aipw <- function(
   }
 
   beta_mu <- coef(outcome_fit)
-  beta_c <- coef(censoring_fit)
-  contribution <- aipw_contributions(beta_mu, beta_c)
+  beta_RY <- coef(RY_fit)
+  contribution <- aipw_contributions(beta_mu, beta_RY)
   eta0 <- mean(contribution$phi0)
   eta1 <- mean(contribution$phi1)
   p_mu <- length(beta_mu)
@@ -78,11 +78,11 @@ fit_aipw <- function(
     c(eta0, eta1, beta_mu, beta_c),
     function(value) {
       beta_mu_value <- value[2 + seq_len(p_mu)]
-      beta_c_value <- tail(value, length(beta_c))
+      beta_RY_value <- tail(value, length(beta_RY))
       phi <- aipw_contributions(beta_mu_value, beta_c_value)
       cbind(
-        .logistic_score(data, beta_mu_value, outcome_formula) * (1L - data$C),
-        .logistic_score(data, beta_c_value, censoring_formula),
+        .logistic_score(data, beta_mu_value, outcome_formula) * data$RY,
+        .logistic_score(data, beta_RY_value, RY_formula),
         phi$phi0 - value[1],
         phi$phi1 - value[2]
       )
@@ -103,7 +103,7 @@ fit_aipw <- function(
 #' @keywords internal
 #' @noRd
 .fit_aipw_proposed <- function(data, outcome_formula, propensity_formula) {
-  data$Q <- data$S * data$R * (1L - data$C)
+  data$Q <- data$S * data$R * data$RY
   observed <- data$Q == 1L
   observed0 <- observed & data$A == 0L
   observed1 <- observed & data$A == 1L
