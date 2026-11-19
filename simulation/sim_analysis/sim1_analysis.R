@@ -104,7 +104,9 @@ plot_sim1 <- function(
   formatted <- results %>%
     mutate(
       Estimator = factor(Estimator, c("G-Formula", "IPW", "AIPW", "DML")),
-      Version = factor(Version, c("Proposed", "Naive")),
+      Version = factor(Version,
+                       c("Crown", "Naive"),
+                       c("Proposed", "Naive")),
       Pi = if_else(
         Version == "Naive", "-",
         if_else(pi_correct, "Correct Pi", "Incorrect Pi")
@@ -122,7 +124,8 @@ plot_sim1 <- function(
           (Estimator == "AIPW" & (mu_correct | pi_correct))
       ))
     ) %>%
-    filter(Version == "Proposed" | (mu_correct & pi_correct))
+    filter((Version == "Proposed" | (mu_correct & pi_correct)) &
+           !(Estimator == "DML" & !(mu_correct & pi_correct)))
 
   summary <- sim1_summary(formatted)
   shade <- formatted %>%
@@ -130,7 +133,9 @@ plot_sim1 <- function(
     filter(!consistent) %>%
     mutate(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf)
   observed_dml <- formatted %>%
-    filter(Estimator == "DML") %>%
+    filter(Estimator == "DML",
+           Pi == "Correct Pi",
+           Mu == "Correct Mu") %>%
     distinct(Estimator, Version, Pi, Mu)
   empty_dml <- formatted %>%
     distinct(Version, Pi, Mu) %>%
@@ -255,3 +260,4 @@ if (sys.nframe() == 0L) {
   sim1_results <- bind_rows(lapply(sim1_files, read.csv))
   plot_sim1(sim1_results)
 }
+

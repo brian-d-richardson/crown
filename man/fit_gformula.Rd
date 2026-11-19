@@ -7,7 +7,7 @@
 fit_gformula(data, outcome_formula, version = c("naive", "proposed"))
 }
 \arguments{
-\item{data}{Combined data containing \code{S}, \code{R}, \code{C}, \code{A}, \code{Y}, \code{wt}, and the
+\item{data}{Combined data containing \code{S}, \code{RW}, \code{RY}, \code{A}, \code{Y}, \code{wt}, and the
 variables in \code{outcome_formula}.}
 
 \item{outcome_formula}{A logistic outcome-regression formula.}
@@ -19,5 +19,5 @@ Estimated risks and their covariance entries.
 }
 \description{
 Fits either the naive or proposed parametric G-formula estimator for the two
-mean potential outcomes.
+mean potential outcome.
 }

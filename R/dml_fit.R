@@ -2,7 +2,7 @@
 #'
 #' Fits the Proposed DML estimator with cross-fitted XGBoost nuisance models.
 #'
-#' @param dat Combined data frame containing:
+#' @param data Combined data frame containing:
 #' \itemize{
 #'   \item `S`: trial (1) or auxiliary (0);
 #'   \item `A`: cluster treatment (0 or 1), in both samples;
@@ -36,26 +36,26 @@
 #'   \item `eta_hat`: risks under control and treatment;
 #'   \item `eta_hat_cov`: their two-by-two covariance matrix;
 #'   \item `fold_estimates`: risks and covariance entries for each fold;
-#'   \item `dat`: input data plus folds, `Q`, out-of-fold outcome predictions,
+#'   \item `data`: input data plus folds, `Q`, out-of-fold outcome predictions,
 #'     selection probabilities, and selection odds.
 #' }
 #' @export
-dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
+fit_dml <- function(data, mu_covariates, pi_covariates, K = 5L,
                     arguments = NULL, random_seed = 1L) {
 
   # Split individuals within each sample and treatment arm.
   set.seed(random_seed)
-  dat <- as.data.frame(dat)
-  dat$fold <- 0L
+  data <- as.data.frame(data)
+  data$fold <- 0L
   for (s in 0:1) {
     for (a in 0:1) {
-      rows <- which(dat$S == s & dat$A == a)
-      dat$fold[rows] <- sample(rep(seq_len(K), length.out = length(rows)))
+      rows <- which(data$S == s & data$A == a)
+      data$fold[rows] <- sample(rep(seq_len(K), length.out = length(rows)))
     }
   }
 
-  dat$Q <- dat$S * dat$RW * dat$RY
-  dat$muhat_0 <- dat$muhat_1 <- dat$Q_prob <- dat$pihat <- NA_real_
+  data$Q <- data$S * data$RW * data$RY
+  data$muhat_0 <- data$muhat_1 <- data$Q_prob <- data$pihat <- NA_real_
   fold_estimates <- data.frame(
     etahat_0 = numeric(K), etahat_1 = numeric(K),
     cov_00 = numeric(K), cov_01 = numeric(K), cov_11 = numeric(K)
@@ -64,8 +64,8 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
   for (k in seq_len(K)) {
 
     # Training data and held-out data.
-    training <- dat[dat$fold != k, ]
-    test <- dat[dat$fold == k, ]
+    training <- data[data$fold != k, ]
+    test <- data[data$fold == k, ]
     observed0 <- training[training$Q == 1 & training$A == 0, ]
     observed1 <- training[training$Q == 1 & training$A == 1, ]
     selection0 <- training[(training$Q == 1 & training$A == 0) | training$S == 0, ]
@@ -85,7 +85,7 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     )
 
     # Predict only on the held-out fold.
-    predict_mu <- test$S == 0 | test$R == 1
+    predict_mu <- test$S == 0 | test$RW == 1
     control <- test$Q == 1 & test$A == 0
     treated <- test$Q == 1 & test$A == 1
     auxiliary <- test$S == 0
@@ -115,10 +115,10 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     phi0[auxiliary] <- test$wt[auxiliary] * test$muhat_0[auxiliary] / n_aux
     phi1[auxiliary] <- test$wt[auxiliary] * test$muhat_1[auxiliary] / n_aux
 
-    covariance <- cov(cbind(phi0, phi1) * nrow(test)) / nrow(dat)
+    covariance <- cov(cbind(phi0, phi1) * nrow(test)) / nrow(data)
     fold_estimates[k, ] <- c(sum(phi0), sum(phi1),
                              covariance[1, 1], covariance[1, 2], covariance[2, 2])
-    dat[dat$fold == k, ] <- test
+    data[data$fold == k, ] <- test
   }
 
   # Average the fold-specific estimates and covariance entries.
@@ -131,6 +131,6 @@ dml_fit <- function(dat, mu_covariates, pi_covariates, K = 5L,
     eta_hat = average[c("etahat_0", "etahat_1")],
     eta_hat_cov = covariance,
     fold_estimates = fold_estimates,
-    dat = dat
+    data = data
   )
 }

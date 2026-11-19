@@ -79,7 +79,7 @@ plot_sim2 <- function(
     "AIPW" = "Proposed AIPW", "DML" = "Proposed DML"
   )
   formatted <- results %>%
-    filter(Version == "Proposed", Estimator %in% names(labels)) %>%
+    filter(Estimator %in% names(labels)) %>%
     mutate(
       Estimator = factor(Estimator, names(labels)),
       Estimator_Panel = factor(labels[as.character(Estimator)], labels),
@@ -162,3 +162,4 @@ if (sys.nframe() == 0L) {
   sim2_results <- bind_rows(lapply(sim2_files, read.csv))
   plot_sim2(sim2_results)
 }
+

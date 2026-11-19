@@ -12,14 +12,14 @@ fit_aipw(
 )
 }
 \arguments{
-\item{data}{Combined data containing \code{S}, \code{R}, \code{C}, \code{A}, \code{Y}, \code{wt}, and the
+\item{data}{Combined data containing \code{S}, \code{RW}, \code{RY}, \code{A}, \code{Y}, \code{wt}, and the
 variables in the two formulas.}
 
 \item{outcome_formula}{A logistic outcome-regression formula.}
 
-\item{weight_formula}{A logistic formula for censoring \code{C} (naive) or
-selection \code{Q = S * R * (1 - C)} (proposed). The proposed model compares
-uncensored trial responders in each treatment arm with the auxiliary sample.}
+\item{weight_formula}{A logistic formula for outcome observation \code{RY} (naive)
+or selection \code{Q = S * RW * RY} (proposed). The proposed model compares trial
+responders with observed outcome in each treatment arm with the auxiliary sample.}
 
 \item{version}{\code{"naive"} or \code{"proposed"}.}
 }

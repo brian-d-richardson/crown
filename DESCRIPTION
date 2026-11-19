@@ -18,4 +18,4 @@ Suggests: devtools, dplyr, ggh4x, ggplot2, legendry,
     testthat (>= 3.0.0), tidyr
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
+Config/roxygen2/version: 8.1.0

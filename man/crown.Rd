@@ -10,17 +10,16 @@ crown(
   outcome,
   treatment,
   response,
-  censoring,
-  cluster,
+  observed_outcome,
   covariates,
   version = c("proposed", "naive"),
-  estimator = c("aipw", "gformula", "ipw"),
+  estimator = c("aipw", "gformula", "ipw", "dml"),
   model = c("xgboost", "logistic"),
   auxiliary_weight = NULL,
   treatment_values = c(0, 1),
   outcome_formula = NULL,
   propensity_formula = NULL,
-  censoring_formula = NULL,
+  observed_outcome_formula = NULL,
   K = 5L,
   arguments = NULL,
   random_seed = 1L
@@ -29,16 +28,13 @@ crown(
 \arguments{
 \item{trial_data, auxiliary_data}{Data frames for the trial and auxiliary sample.}
 
-\item{outcome}{Binary outcome column; required for uncensored responders.}
+\item{outcome}{Binary outcome column; required for responders with observed outcome}
 
 \item{treatment}{Cluster-level treatment column in the trial.}
 
 \item{response}{Trial response indicator column (1 = responder).}
 
-\item{censoring}{Censoring indicator column (1 = censored).}
-
-\item{cluster}{Cluster identifier column shared by both samples. Treatment
-must be constant within each cluster.}
+\item{observed_outcome}{observed outcome indicator column (1 = observed).}
 
 \item{covariates}{Shared baseline covariate column names, including the
 cluster-level covariates needed for conditional independence.}
@@ -46,20 +42,20 @@ cluster-level covariates needed for conditional independence.}
 \item{version}{\code{"proposed"} (default) or \code{"naive"}. Proposed estimators use
 auxiliary covariates; naive estimators use trial responders alone.}
 
-\item{estimator}{\code{"aipw"} (default), \code{"gformula"}, or \code{"ipw"}.
+\item{estimator}{\code{"aipw"} (default), \code{"gformula"}, \code{"ipw"}, or \code{"dml"}.
 Logistic regression supports all three estimators and both versions.}
 
 \item{model}{\code{"xgboost"} (default) or \code{"logistic"}. XGBoost is supported
-only for Proposed AIPW, which is reported as DML.}
+only for Proposed DML.}
 
 \item{auxiliary_weight}{Optional auxiliary sampling-weight column. Omit for
 equal weights. Supplied weights are normalized to have mean one.}
 
 \item{treatment_values}{Control and treatment values, in that order.}
 
-\item{outcome_formula, propensity_formula, censoring_formula}{Optional logistic
-formulas using standardized names \code{Y}, \code{A}, \code{Q}, \code{C}, and the covariates.
-Defaults are \code{Y ~ A * (covariates)}, \code{Q ~ covariates}, and \code{C ~ covariates}.}
+\item{outcome_formula, propensity_formula, observed_outcome_formula}{Optional logistic
+formulas using standardized names \code{Y}, \code{A}, \code{Q}, \code{RY}, and the covariates.
+Defaults are \code{Y ~ A * (covariates)}, \code{Q ~ covariates}, and \code{RY ~ covariates}.}
 
 \item{K}{Number of outer cross-fitting folds (default 5); used only by
 XGBoost, not tuning CV.}

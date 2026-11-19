@@ -19,7 +19,7 @@ fit_aipw <- function(
     version = c("naive", "proposed")) {
   version <- match.arg(version)
   if (version == "naive") {
-    data <- data[data$S == 1L & data$R == 1L, ]
+    data <- data[data$S == 1L & data$RW == 1L, ]
     return(.fit_aipw_naive(data, outcome_formula, weight_formula))
   }
   .fit_aipw_proposed(data, outcome_formula, weight_formula)
@@ -75,11 +75,11 @@ fit_aipw <- function(
   p_mu <- length(beta_mu)
 
   covariance <- .sandwich_covariance(
-    c(eta0, eta1, beta_mu, beta_c),
+    c(eta0, eta1, beta_mu, beta_RY),
     function(value) {
       beta_mu_value <- value[2 + seq_len(p_mu)]
       beta_RY_value <- tail(value, length(beta_RY))
-      phi <- aipw_contributions(beta_mu_value, beta_c_value)
+      phi <- aipw_contributions(beta_mu_value, beta_RY_value)
       cbind(
         .logistic_score(data, beta_mu_value, outcome_formula) * data$RY,
         .logistic_score(data, beta_RY_value, RY_formula),
@@ -103,7 +103,7 @@ fit_aipw <- function(
 #' @keywords internal
 #' @noRd
 .fit_aipw_proposed <- function(data, outcome_formula, propensity_formula) {
-  data$Q <- data$S * data$R * data$RY
+  data$Q <- data$S * data$RW * data$RY
   observed <- data$Q == 1L
   observed0 <- observed & data$A == 0L
   observed1 <- observed & data$A == 1L

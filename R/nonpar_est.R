@@ -2,7 +2,7 @@
 #'
 #' @param x Predictor data frame.
 #' @param y Binary outcome vector.
-#' @param arguments Optional learner settings; see [dml_fit()].
+#' @param arguments Optional learner settings; see [fit_dml()].
 #' @param wts Optional observation weights.
 #' @return A fitted XGBoost model.
 #' @keywords internal

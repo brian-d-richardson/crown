@@ -13,6 +13,7 @@
 #' @return The estimated covariance matrix of \code{parameter}.
 #'
 #' @keywords internal
+#' @importFrom numDeriv jacobian
 #' @noRd
 .sandwich_covariance <- function(parameter, estimating_function, n) {
   derivative <- jacobian(

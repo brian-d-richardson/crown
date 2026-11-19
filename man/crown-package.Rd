@@ -13,6 +13,7 @@ covariates using logistic regression or cross-fitted machine learning.
 
 Authors:
 \itemize{
+  \item Zhitan He \email{zhitanhe@unc.edu}
   \item Brian Richardson \email{richabr@wfu.edu}
 }
 

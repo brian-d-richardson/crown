@@ -3,21 +3,23 @@
 S3method(print,crown_fit)
 S3method(summary,crown_fit)
 export(crown)
-export(dml_fit)
 export(fit_aipw)
+export(fit_dml)
 export(fit_gformula)
 export(fit_ipw)
 importFrom(numDeriv,jacobian)
-importFrom(stats,as.formula)
-importFrom(stats,binomial)
-importFrom(stats,coef)
-importFrom(stats,cov)
-importFrom(stats,glm)
-importFrom(stats,model.frame)
-importFrom(stats,model.matrix)
-importFrom(stats,model.response)
-importFrom(stats,plogis)
-importFrom(stats,predict)
-importFrom(stats,weighted.mean)
+importFrom(stats,
+  as.formula,
+  binomial,
+  coef,
+  cov,
+  glm,
+  model.frame,
+  model.matrix,
+  model.response,
+  plogis,
+  predict,
+  weighted.mean
+)
 importFrom(utils,tail)
 importFrom(xgboost,xgboost)
